@@ -22,7 +22,11 @@ class CodexParser:
             for line in f:
                 if not line.strip():
                     continue
-                data = json.loads(line)
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    # Skip malformed lines
+                    continue
                 msg = self._parse_message(data, session_file)
                 if msg:
                     messages.append(msg)

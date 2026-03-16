@@ -45,10 +45,14 @@ class ClaudeParser:
         messages = []
 
         with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 if not line.strip():
                     continue
-                data = json.loads(line)
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError as e:
+                    # Skip malformed lines (control chars, truncated JSON, etc.)
+                    continue
                 msg = self._parse_message(data)
                 if msg:
                     messages.append(msg)
@@ -74,19 +78,35 @@ class ClaudeParser:
         # Handle string or list content
         if isinstance(content, list):
             texts = []
+            tool_results = []
+
             for block in content:
                 if isinstance(block, dict):
                     if block.get("type") == "text":
                         texts.append(block.get("text", ""))
                     elif block.get("type") == "tool_result":
-                        # Extract actual tool result content
+                        # Collect tool results
                         tool_content = block.get("content", "")
-                        if tool_content:
-                            texts.append(str(tool_content))
-                        else:
-                            texts.append(f"[Tool Result: {block.get('tool_use_id', 'unknown')}]")
+                        tool_results.append(str(tool_content) if tool_content else "")
                 else:
                     texts.append(str(block))
+
+            # If only tool results (no user text), return as tool_result message
+            if tool_results and not texts:
+                return Message(
+                    role="tool_result",
+                    content=tool_results[0],
+                    uuid=data.get("uuid", ""),
+                    timestamp=self._parse_timestamp(data.get("timestamp")),
+                    session_id=data.get("sessionId", ""),
+                    project_path=data.get("cwd", ""),
+                    message_type="tool_result"
+                )
+
+            # If both text and tool results, combine them
+            if tool_results:
+                texts.extend(tool_results)
+
             content = "\n".join(texts)
 
         return Message(

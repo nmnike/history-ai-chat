@@ -243,7 +243,7 @@ body {
 .thinking-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     padding: 10px 14px;
     cursor: pointer;
     user-select: none;
@@ -286,7 +286,7 @@ body {
 .tool-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     padding: 10px 14px;
     cursor: pointer;
     user-select: none;
@@ -396,4 +396,29 @@ body {
 .thinking-block,
 .tool-block {
     transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+/* Collapsible headers */
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+}
+
+.collapsible-header:hover {
+    opacity: 0.8;
+}
+
+.collapse-icon {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+}
+
+.message-header .collapse-icon {
+    opacity: 0.5;
+}
+
+.message-header:hover .collapse-icon {
+    opacity: 1;
 }

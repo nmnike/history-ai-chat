@@ -40,9 +40,6 @@
             <button class="btn btn-outline-primary btn-sm" onclick="exportSession('md')">
                 <i class="bi bi-file-text"></i> Export MD
             </button>
-            <button class="btn btn-outline-secondary btn-sm" onclick="exportSession('json')">
-                <i class="bi bi-file-code"></i> Export JSON
-            </button>
         </div>
     </div>
 </div>
@@ -138,9 +135,15 @@ function renderMessages(messages) {
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
+        const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
         const msgClass = isUser ? 'user-message' : 'assistant-message';
-        const roleLabel = isUser ? 'You' : 'Assistant';
-        const roleBadge = isUser ? 'bg-primary' : 'bg-secondary';
+        const roleLabel = isUser ? 'You' : (isToolResult ? 'Tool Result' : 'Assistant');
+        const roleBadge = isUser ? 'bg-primary' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary');
+        const roleIcon = isUser ? '' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : '');
+
+        // Tool result is collapsed by default
+        const collapsedStyle = isToolResult ? 'style="display: none"' : '';
+        const collapsedIcon = isToolResult ? 'bi-chevron-right' : 'bi-chevron-down';
 
         let contentHtml = '';
 
@@ -148,38 +151,41 @@ function renderMessages(messages) {
         if (msg.thinking_text) {
             contentHtml += `
                 <div class="thinking-block mb-2">
-                    <div class="thinking-header">
+                    <div class="thinking-header collapsible-header" onclick="toggleCollapse(this)">
                         <i class="bi bi-lightbulb"></i> Thinking
+                        <i class="bi bi-chevron-down collapse-icon"></i>
                     </div>
-                    <pre class="thinking-content mb-0">${escapeHtml(msg.thinking_text)}</pre>
+                    <pre class="thinking-content mb-0 collapse-content">${escapeHtml(msg.thinking_text)}</pre>
                 </div>
             `;
         }
 
         // Main content
         if (msg.content) {
-            contentHtml += `<div class="message-content">${formatContent(msg.content)}</div>`;
+            contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
         }
 
         // Tool use
         if (msg.tool_name) {
             contentHtml += `
                 <div class="tool-use-block mt-2">
-                    <div class="tool-header">
+                    <div class="tool-header collapsible-header" onclick="toggleCollapse(this)">
                         <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
+                        <i class="bi bi-chevron-down collapse-icon"></i>
                     </div>
-                    ${msg.tool_input ? `<pre class="tool-input mb-0">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
+                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
                 </div>
             `;
         }
 
         return `
             <div class="message-bubble ${msgClass}">
-                <div class="message-header">
-                    <span class="badge ${roleBadge}">${roleLabel}</span>
+                <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
+                    <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                    <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
                 </div>
-                ${contentHtml}
+                <div class="message-body collapse-content" ${collapsedStyle}>${contentHtml}</div>
             </div>
         `;
     }).join('');
@@ -208,6 +214,39 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Collapse/expand functionality
+function toggleMessageCollapse(header) {
+    const bubble = header.closest('.message-bubble');
+    const body = bubble.querySelector('.message-body');
+    const icon = header.querySelector('.collapse-icon');
+
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        icon.classList.remove('bi-chevron-right');
+        icon.classList.add('bi-chevron-down');
+    } else {
+        body.style.display = 'none';
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-right');
+    }
+}
+
+function toggleCollapse(header) {
+    const block = header.closest('.thinking-block, .tool-use-block');
+    const content = block.querySelector('.collapse-content');
+    const icon = header.querySelector('.collapse-icon');
+
+    if (content.style.display === 'none') {
+        content.style.display = '';
+        icon.classList.remove('bi-chevron-right');
+        icon.classList.add('bi-chevron-down');
+    } else {
+        content.style.display = 'none';
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-right');
+    }
 }
 
 function exportSession(format) {
