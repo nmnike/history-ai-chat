@@ -22,17 +22,17 @@
 </div>
 
 <div class="row mb-3">
-    <div class="col-md-6">
-        <h5>
+    <div class="col-md-8">
+        <h5 class="mb-2">
             <i class="bi bi-chat-dots"></i>
             <span id="session-id">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
-            <span id="session-stats" class="ms-2" style="font-size: 0.75rem;"></span>
         </h5>
+        <div id="session-stats" class="d-flex flex-wrap gap-1"></div>
         <small class="text-muted" id="session-date"></small>
     </div>
-    <div class="col-md-6 text-end">
+    <div class="col-md-4 text-end">
         <div class="btn-group me-2">
             <button class="btn btn-outline-secondary btn-sm" id="layout-toggle" onclick="toggleMessageLayout()" title="Toggle message layout">
                 <i class="bi bi-layout-text-window-reverse" id="layout-icon"></i>
@@ -65,6 +65,8 @@
 const sessionId = {{ session_id|tojson }};
 const projectId = {{ project_id|tojson }};
 const platform = {{ platform|tojson }};
+let allMessages = [];
+let activeFilter = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     initMessageLayout();
@@ -119,6 +121,7 @@ function loadConversation() {
                 badgeEl.className = 'badge bg-warning text-dark';
             }
 
+            allMessages = messages;
             renderMessages(messages);
             updateSessionStats(messages);
         })
@@ -137,6 +140,9 @@ function renderMessages(messages) {
         return;
     }
 
+    // Track last tool_name to associate tool_result with its tool
+    let lastToolName = '';
+
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
         const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
@@ -144,6 +150,12 @@ function renderMessages(messages) {
         const roleLabel = isUser ? 'You' : (isToolResult ? 'Tool Result' : 'Assistant');
         const roleBadge = isUser ? 'bg-primary' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary');
         const roleIcon = isUser ? '' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : '');
+
+        // Track tool_name for tool_result association
+        if (msg.tool_name) {
+            lastToolName = msg.tool_name;
+        }
+        const toolNameForFilter = isToolResult ? lastToolName : (msg.tool_name || '');
 
         // Tool result is collapsed by default
         const collapsedStyle = isToolResult ? 'style="display: none"' : '';
@@ -183,7 +195,7 @@ function renderMessages(messages) {
         }
 
         return `
-            <div class="message-bubble ${msgClass}">
+            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}">
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
@@ -357,19 +369,56 @@ function updateSessionStats(messages) {
     const container = document.getElementById('session-stats');
     if (!container) return;
 
-    let html = `<span class="badge bg-primary me-1"><i class="bi bi-person"></i> ${stats.user}</span>`;
-    html += `<span class="badge bg-secondary me-1"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
+    let html = `<span class="badge bg-primary me-1 stat-badge" data-filter="user" onclick="toggleFilter('user')"><i class="bi bi-person"></i> ${stats.user}</span>`;
+    html += `<span class="badge bg-secondary me-1 stat-badge" data-filter="assistant" onclick="toggleFilter('assistant')"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
 
     const toolNames = Object.keys(stats.tools);
     if (toolNames.length > 0) {
         toolNames
             .sort((a, b) => stats.tools[b] - stats.tools[a])
             .forEach(tool => {
-                html += `<span class="badge bg-info text-dark me-1" title="${tool}">${tool}: ${stats.tools[tool]}</span>`;
+                html += `<span class="badge bg-info text-dark me-1 stat-badge" data-filter="${tool}" onclick="toggleFilter('${tool}')">${tool}: ${stats.tools[tool]}</span>`;
             });
     }
 
     container.innerHTML = html;
+}
+
+function toggleFilter(filter) {
+    const badges = document.querySelectorAll('.stat-badge');
+    const bubbles = document.querySelectorAll('.message-bubble');
+
+    if (activeFilter === filter) {
+        // Toggle off - show all
+        activeFilter = null;
+        badges.forEach(b => b.classList.remove('active-filter'));
+        bubbles.forEach(b => b.style.display = '');
+    } else {
+        // Apply filter
+        activeFilter = filter;
+        badges.forEach(b => {
+            if (b.dataset.filter === filter) {
+                b.classList.add('active-filter');
+            } else {
+                b.classList.remove('active-filter');
+            }
+        });
+
+        bubbles.forEach(b => {
+            const tool = b.dataset.tool;
+            const role = b.dataset.role;
+
+            if (filter === 'user' && role === 'user') {
+                b.style.display = '';
+            } else if (filter === 'assistant' && role === 'assistant') {
+                b.style.display = '';
+            } else if (tool === filter) {
+                b.style.display = '';
+            } else {
+                b.style.display = 'none';
+            }
+        });
+    }
 }
 </script>
 {% endblock %}

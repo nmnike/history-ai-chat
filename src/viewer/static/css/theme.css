@@ -621,6 +621,15 @@ body {
     color: #67e8f9;
 }
 
+[data-theme="dark"] .badge.active-filter,
+[data-theme="dark"] .badge.bg-primary.active-filter,
+[data-theme="dark"] .badge.bg-secondary.active-filter,
+[data-theme="dark"] .badge.bg-info.active-filter {
+    background-color: var(--accent) !important;
+    color: white !important;
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(59, 130, 246, 0.6);
+}
+
 [data-theme="dark"] .text-muted {
     color: var(--text-secondary) !important;
 }
@@ -782,6 +791,32 @@ body {
 /* Collapse content */
 .collapse-content {
     transition: opacity 0.2s ease;
+}
+
+/* Stat badges - clickable filters */
+.stat-badge {
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.stat-badge:hover {
+    transform: scale(1.05);
+}
+
+.stat-badge.active-filter {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 8px rgba(59, 130, 246, 0.5);
+    background-color: var(--accent) !important;
+    color: white !important;
+}
+
+.badge.active-filter,
+.badge.bg-primary.active-filter,
+.badge.bg-secondary.active-filter,
+.badge.bg-info.active-filter,
+.badge.bg-warning.active-filter {
+    background-color: var(--accent) !important;
+    color: white !important;
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(59, 130, 246, 0.6);
 }
 
 /* Scrollable messages */
