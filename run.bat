@@ -21,4 +21,5 @@ start http://localhost:6300
 echo.
 echo Press Ctrl+C to stop the server
 echo ====================================
+set PYTHONPATH=%~dp0src
 python -m uvicorn viewer.main:app --host 127.0.0.1 --port 6300
