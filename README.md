@@ -44,6 +44,24 @@ history-ai-chat --claude-path /path/to/.claude/projects --codex-path /path/to/.c
 
 Open http://localhost:6300 in your browser.
 
+## Desktop Application
+
+For Windows users without Python:
+
+1. Download `history-ai-chat.exe` from Releases
+2. Double-click to run
+3. Browser opens automatically
+4. Use tray icon to reopen or exit
+
+### Building from Source
+
+```cmd
+pip install -e ".[build]"
+build.bat
+```
+
+Output: `dist\history-ai-chat.exe`
+
 ## Data Locations
 
 | Platform | Default Path |
