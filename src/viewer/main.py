@@ -363,6 +363,36 @@ async def search(
     return {"results": results[:100]}  # Limit to 100 results
 
 
+# Favorites API
+
+@app.get("/api/favorites")
+async def list_favorites():
+    """List all favorite sessions"""
+    favorites = cache_db.get_favorites()
+    return {"favorites": favorites}
+
+
+@app.post("/api/favorites/{session_id}")
+async def add_favorite(session_id: str):
+    """Add session to favorites"""
+    cache_db.add_favorite(session_id)
+    return {"status": "added", "session_id": session_id}
+
+
+@app.delete("/api/favorites/{session_id}")
+async def remove_favorite(session_id: str):
+    """Remove session from favorites"""
+    cache_db.remove_favorite(session_id)
+    return {"status": "removed", "session_id": session_id}
+
+
+@app.get("/api/favorites/{session_id}/status")
+async def check_favorite_status(session_id: str):
+    """Check if session is favorited"""
+    is_fav = cache_db.is_favorite(session_id)
+    return {"session_id": session_id, "is_favorite": is_fav}
+
+
 @app.get("/api/export/{session_id}")
 async def export_session(
     session_id: str,

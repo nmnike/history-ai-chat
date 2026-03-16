@@ -42,3 +42,26 @@ def test_favorites(tmp_path):
     favorites = db.get_favorites()
     assert len(favorites) == 1
     assert favorites[0]["session_id"] == "fav-session"
+
+
+def test_remove_favorite(tmp_path):
+    """Test removing a favorite"""
+    db = CacheDB(tmp_path / "cache.db")
+
+    db.cache_session({"id": "session-1", "project": "p1", "preview": "Test"})
+    db.add_favorite("session-1")
+
+    assert db.is_favorite("session-1") is True
+
+    db.remove_favorite("session-1")
+    assert db.is_favorite("session-1") is False
+
+    favorites = db.get_favorites()
+    assert len(favorites) == 0
+
+
+def test_is_favorite_not_exists(tmp_path):
+    """Test is_favorite returns False for non-existent favorite"""
+    db = CacheDB(tmp_path / "cache.db")
+
+    assert db.is_favorite("non-existent") is False

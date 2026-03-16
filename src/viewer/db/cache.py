@@ -95,3 +95,18 @@ class CacheDB:
                 ORDER BY f.created_at DESC
             """)
             return [dict(row) for row in cursor.fetchall()]
+
+    def remove_favorite(self, session_id: str):
+        """Remove session from favorites"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM favorites WHERE session_id = ?", (session_id,)
+            )
+
+    def is_favorite(self, session_id: str) -> bool:
+        """Check if session is in favorites"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM favorites WHERE session_id = ?", (session_id,)
+            )
+            return cursor.fetchone() is not None

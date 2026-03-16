@@ -27,6 +27,7 @@
             <i class="bi bi-chat-dots"></i>
             <span id="session-id">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+            <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
         </h5>
         <small class="text-muted" id="session-date"></small>
     </div>
@@ -67,6 +68,7 @@ const platform = {{ platform|tojson }};
 document.addEventListener('DOMContentLoaded', function() {
     initMessageLayout();
     loadConversation();
+    initFavoriteButton();
 });
 
 // Message layout toggle
@@ -280,6 +282,56 @@ function exportSession(format) {
             console.error('Export failed:', err);
             alert('Export failed');
         });
+}
+
+// Favorites functionality
+function initFavoriteButton() {
+    const btn = document.getElementById('favorite-btn');
+    if (!btn) return;
+
+    // Check current favorite status
+    fetch(`/api/favorites/${encodeURIComponent(sessionId)}/status`)
+        .then(response => response.json())
+        .then(data => {
+            updateFavoriteIcon(data.is_favorite);
+        })
+        .catch(err => console.error('Failed to check favorite status:', err));
+
+    // Click handler
+    btn.addEventListener('click', toggleFavorite);
+}
+
+function toggleFavorite() {
+    const btn = document.getElementById('favorite-btn');
+    const isFav = btn.classList.contains('bi-star-fill');
+
+    const method = isFav ? 'DELETE' : 'POST';
+    const url = `/api/favorites/${encodeURIComponent(sessionId)}`;
+
+    fetch(url, { method: method })
+        .then(response => response.json())
+        .then(data => {
+            updateFavoriteIcon(!isFav);
+        })
+        .catch(err => {
+            console.error('Failed to toggle favorite:', err);
+            alert('Failed to update favorite');
+        });
+}
+
+function updateFavoriteIcon(isFavorite) {
+    const btn = document.getElementById('favorite-btn');
+    if (!btn) return;
+
+    if (isFavorite) {
+        btn.classList.remove('bi-star');
+        btn.classList.add('bi-star-fill');
+        btn.title = 'Remove from favorites';
+    } else {
+        btn.classList.remove('bi-star-fill');
+        btn.classList.add('bi-star');
+        btn.title = 'Add to favorites';
+    }
 }
 </script>
 {% endblock %}

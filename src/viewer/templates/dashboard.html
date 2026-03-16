@@ -48,6 +48,15 @@
     </div>
 </div>
 
+<!-- Favorites Section -->
+<div class="row mb-3" id="favorites-section" style="display: none;">
+    <div class="col-12">
+        <h5><i class="bi bi-star-fill text-warning"></i> Favorites</h5>
+        <div id="favorites-list" class="list-group mb-3">
+        </div>
+    </div>
+</div>
+
 <!-- Projects List -->
 <div class="row">
     <div class="col-12">
@@ -69,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set default date filter to today
     document.getElementById('date-filter').value = 'today';
     document.getElementById('date-filter').addEventListener('change', loadProjects);
+    loadFavorites();
     loadProjects();
     initSearch();
 });
@@ -118,6 +128,48 @@ function loadProjects() {
             console.error('Failed to load projects:', err);
             document.getElementById('projects-list').innerHTML =
                 '<div class="alert alert-danger">Failed to load projects</div>';
+        });
+}
+
+function loadFavorites() {
+    fetch('/api/favorites')
+        .then(response => response.json())
+        .then(data => {
+            const favorites = data.favorites || [];
+            const section = document.getElementById('favorites-section');
+            const list = document.getElementById('favorites-list');
+
+            if (favorites.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = '';
+            list.innerHTML = favorites.map(fav => {
+                const platformBadge = fav.platform === 'codex'
+                    ? '<span class="badge bg-info">Codex</span>'
+                    : '<span class="badge bg-warning text-dark">Claude</span>';
+                const date = fav.cached_at ? new Date(fav.cached_at).toLocaleDateString() : '';
+                const preview = fav.preview ? escapeHtml(fav.preview.substring(0, 100)) : '';
+
+                return `
+                    <a href="/conversation/${encodeURIComponent(fav.session_id)}?platform=${fav.platform}" class="list-group-item list-group-item-action">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="fw-bold">${escapeHtml(fav.project || 'Unknown')}</div>
+                                <small class="text-muted">${preview}${preview.length >= 100 ? '...' : ''}</small>
+                            </div>
+                            <div class="text-end">
+                                ${platformBadge}
+                                <br><small class="text-muted">${date}</small>
+                            </div>
+                        </div>
+                    </a>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Failed to load favorites:', err);
         });
 }
 
