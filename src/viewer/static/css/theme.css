@@ -169,14 +169,12 @@ body {
 
 .user-message {
     background-color: var(--user-bg);
-    margin-left: auto;
-    text-align: right;
+    margin-right: auto;
 }
 
 .assistant-message {
     background-color: var(--assistant-bg);
-    margin-right: auto;
-    text-align: left;
+    margin-left: auto;
 }
 
 /* Message content */
