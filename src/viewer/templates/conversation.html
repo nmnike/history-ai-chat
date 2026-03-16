@@ -28,6 +28,7 @@
             <span id="session-id">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
+            <span id="session-stats" class="ms-2" style="font-size: 0.75rem;"></span>
         </h5>
         <small class="text-muted" id="session-date"></small>
     </div>
@@ -119,6 +120,7 @@ function loadConversation() {
             }
 
             renderMessages(messages);
+            updateSessionStats(messages);
         })
         .catch(err => {
             console.error('Failed to load conversation:', err);
@@ -167,15 +169,15 @@ function renderMessages(messages) {
             contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
         }
 
-        // Tool use
+        // Tool use - collapsed by default
         if (msg.tool_name) {
             contentHtml += `
                 <div class="tool-use-block mt-2">
                     <div class="tool-header collapsible-header" onclick="toggleCollapse(this)">
                         <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
-                        <i class="bi bi-chevron-down collapse-icon"></i>
+                        <i class="bi bi-chevron-right collapse-icon"></i>
                     </div>
-                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
+                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" style="display: none">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
                 </div>
             `;
         }
@@ -325,13 +327,49 @@ function updateFavoriteIcon(isFavorite) {
 
     if (isFavorite) {
         btn.classList.remove('bi-star');
-        btn.classList.add('bi-star-fill');
+        btn.classList.add('bi-star-fill', 'text-warning');
         btn.title = 'Remove from favorites';
     } else {
-        btn.classList.remove('bi-star-fill');
+        btn.classList.remove('bi-star-fill', 'text-warning');
         btn.classList.add('bi-star');
         btn.title = 'Add to favorites';
     }
+}
+
+function updateSessionStats(messages) {
+    const stats = {
+        user: 0,
+        assistant: 0,
+        tools: {}
+    };
+
+    messages.forEach(msg => {
+        if (msg.role === 'user') {
+            stats.user++;
+        } else if (msg.role === 'assistant') {
+            stats.assistant++;
+        }
+        if (msg.tool_name) {
+            stats.tools[msg.tool_name] = (stats.tools[msg.tool_name] || 0) + 1;
+        }
+    });
+
+    const container = document.getElementById('session-stats');
+    if (!container) return;
+
+    let html = `<span class="badge bg-primary me-1"><i class="bi bi-person"></i> ${stats.user}</span>`;
+    html += `<span class="badge bg-secondary me-1"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
+
+    const toolNames = Object.keys(stats.tools);
+    if (toolNames.length > 0) {
+        toolNames
+            .sort((a, b) => stats.tools[b] - stats.tools[a])
+            .forEach(tool => {
+                html += `<span class="badge bg-info text-dark me-1" title="${tool}">${tool}: ${stats.tools[tool]}</span>`;
+            });
+    }
+
+    container.innerHTML = html;
 }
 </script>
 {% endblock %}
