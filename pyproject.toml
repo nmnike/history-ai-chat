@@ -25,6 +25,7 @@ build = [
 
 [project.scripts]
 history-ai-chat = "viewer.cli:main"
+history-ai-chat-desktop = "viewer.desktop:main"
 
 [build-system]
 requires = ["hatchling"]
