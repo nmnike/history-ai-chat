@@ -31,6 +31,11 @@
         <small class="text-muted" id="session-date"></small>
     </div>
     <div class="col-md-6 text-end">
+        <div class="btn-group me-2">
+            <button class="btn btn-outline-secondary btn-sm" id="layout-toggle" onclick="toggleMessageLayout()" title="Toggle message layout">
+                <i class="bi bi-layout-text-window-reverse" id="layout-icon"></i>
+            </button>
+        </div>
         <div class="btn-group">
             <button class="btn btn-outline-primary btn-sm" onclick="exportSession('md')">
                 <i class="bi bi-file-text"></i> Export MD
@@ -45,7 +50,7 @@
 <!-- Messages Container -->
 <div id="messages-container" class="card">
     <div class="card-body">
-        <div id="messages-list">
+        <div id="messages-list" class="messages">
             <div class="text-center py-4">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
@@ -63,8 +68,36 @@ const projectId = {{ project_id|tojson }};
 const platform = {{ platform|tojson }};
 
 document.addEventListener('DOMContentLoaded', function() {
+    initMessageLayout();
     loadConversation();
 });
+
+// Message layout toggle
+function initMessageLayout() {
+    const savedLayout = localStorage.getItem('messageLayout') || 'all-left';
+    applyMessageLayout(savedLayout);
+}
+
+function toggleMessageLayout() {
+    const container = document.getElementById('messages-list');
+    const isSplit = container.classList.contains('split-layout');
+    const newLayout = isSplit ? 'all-left' : 'split';
+    applyMessageLayout(newLayout);
+    localStorage.setItem('messageLayout', newLayout);
+}
+
+function applyMessageLayout(layout) {
+    const container = document.getElementById('messages-list');
+    const icon = document.getElementById('layout-icon');
+
+    if (layout === 'split') {
+        container.classList.add('split-layout');
+        icon.className = 'bi bi-layout-split-reverse';
+    } else {
+        container.classList.remove('split-layout');
+        icon.className = 'bi bi-layout-text-window-reverse';
+    }
+}
 
 function loadConversation() {
     const params = new URLSearchParams({ project_id: projectId, platform: platform });
@@ -105,7 +138,6 @@ function renderMessages(messages) {
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
-        const alignClass = isUser ? 'justify-content-end' : 'justify-content-start';
         const msgClass = isUser ? 'user-message' : 'assistant-message';
         const roleLabel = isUser ? 'You' : 'Assistant';
         const roleBadge = isUser ? 'bg-primary' : 'bg-secondary';
@@ -142,14 +174,12 @@ function renderMessages(messages) {
         }
 
         return `
-            <div class="d-flex ${alignClass} mb-3">
-                <div class="message-bubble ${msgClass}">
-                    <div class="message-header">
-                        <span class="badge ${roleBadge}">${roleLabel}</span>
-                        ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
-                    </div>
-                    ${contentHtml}
+            <div class="message-bubble ${msgClass}">
+                <div class="message-header">
+                    <span class="badge ${roleBadge}">${roleLabel}</span>
+                    ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
                 </div>
+                ${contentHtml}
             </div>
         `;
     }).join('');

@@ -167,14 +167,31 @@ body {
     overflow-wrap: break-word;
 }
 
+.message-bubble {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 12px;
+    max-width: 80%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
 .user-message {
     background-color: var(--user-bg);
-    margin-right: auto;
 }
 
 .assistant-message {
     background-color: var(--assistant-bg);
+}
+
+/* Split layout: user left, assistant right */
+.messages.split-layout .user-message {
+    margin-right: auto;
+}
+
+.messages.split-layout .assistant-message {
     margin-left: auto;
+}
 }
 
 /* Message content */
