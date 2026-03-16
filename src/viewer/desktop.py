@@ -1,5 +1,6 @@
 # src/viewer/desktop.py
 """Desktop application entry point with tray icon"""
+import socket
 import sys
 import threading
 import time
@@ -37,6 +38,23 @@ def run_server(port: int = 6300):
     )
 
 
+def wait_for_server(port: int, timeout: float = 10.0) -> bool:
+    """Wait for server to be ready"""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.5)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            if result == 0:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.1)
+    return False
+
+
 def main():
     """Main entry point for desktop application"""
     port = 6300
@@ -49,8 +67,13 @@ def main():
     )
     server_thread.start()
 
-    # Wait for server to start
-    time.sleep(0.5)
+    # Wait for server to be ready
+    if not wait_for_server(port):
+        print("Failed to start server")
+        return
+
+    # Small delay to ensure server is fully ready
+    time.sleep(0.2)
 
     # Open browser
     webbrowser.open(f"http://127.0.0.1:{port}")
