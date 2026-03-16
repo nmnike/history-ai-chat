@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project_id }} - Claude Codex Viewer{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+    <a class="nav-link" href="/"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active">{{ project_id }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <h4>
+            <i class="bi bi-folder"></i> {{ project_id }}
+            <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+        </h4>
+        <p class="text-muted" id="project-path"></p>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12">
+        <h5><i class="bi bi-chat-dots"></i> Sessions</h5>
+        <div id="sessions-list" class="list-group">
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = {{ project_id|tojson }};
+const platform = {{ platform|tojson }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSessions();
+});
+
+function loadSessions() {
+    fetch(`/api/sessions/${encodeURIComponent(projectId)}?platform=${platform}`)
+        .then(response => response.json())
+        .then(data => {
+            const sessions = data.sessions || [];
+            const listEl = document.getElementById('sessions-list');
+
+            if (sessions.length === 0) {
+                listEl.innerHTML = '<div class="text-center py-4 text-muted">No sessions found</div>';
+                return;
+            }
+
+            // Update platform badge color
+            const badgeEl = document.getElementById('platform-badge');
+            if (platform === 'claude') {
+                badgeEl.className = 'badge bg-warning text-dark';
+            }
+
+            listEl.innerHTML = sessions.map(s => {
+                const date = s.created_at ? new Date(s.created_at).toLocaleString() : 'Unknown date';
+                return `
+                    <a href="/conversation/${encodeURIComponent(s.id)}?project_id=${encodeURIComponent(projectId)}&platform=${platform}"
+                       class="list-group-item list-group-item-action">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="fw-bold">${escapeHtml(s.first_message || 'No preview')}</div>
+                                <small class="text-muted">${date}</small>
+                            </div>
+                            <span class="badge bg-secondary rounded-pill">${s.message_count} messages</span>
+                        </div>
+                    </a>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Failed to load sessions:', err);
+            document.getElementById('sessions-list').innerHTML =
+                '<div class="alert alert-danger">Failed to load sessions</div>';
+        });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

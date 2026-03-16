@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Conversation - Claude Codex Viewer{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+    <a class="nav-link" href="/"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item"><a href="/project/{{ project_id }}?platform={{ platform }}">{{ project_id }}</a></li>
+                <li class="breadcrumb-item active">Conversation</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <h5>
+            <i class="bi bi-chat-dots"></i>
+            <span id="session-id">{{ session_id }}</span>
+            <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+        </h5>
+        <small class="text-muted" id="session-date"></small>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="btn-group">
+            <button class="btn btn-outline-primary btn-sm" onclick="exportSession('md')">
+                <i class="bi bi-file-text"></i> Export MD
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="exportSession('json')">
+                <i class="bi bi-file-code"></i> Export JSON
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Messages Container -->
+<div id="messages-container" class="card">
+    <div class="card-body">
+        <div id="messages-list">
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const sessionId = {{ session_id|tojson }};
+const projectId = {{ project_id|tojson }};
+const platform = {{ platform|tojson }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadConversation();
+});
+
+function loadConversation() {
+    const params = new URLSearchParams({ project_id: projectId, platform: platform });
+    fetch(`/api/conversation/${encodeURIComponent(sessionId)}?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            const session = data.session || {};
+            const messages = data.messages || [];
+
+            // Update session info
+            if (session.created_at) {
+                document.getElementById('session-date').textContent =
+                    new Date(session.created_at).toLocaleString();
+            }
+
+            // Update platform badge
+            const badgeEl = document.getElementById('platform-badge');
+            if (platform === 'claude') {
+                badgeEl.className = 'badge bg-warning text-dark';
+            }
+
+            renderMessages(messages);
+        })
+        .catch(err => {
+            console.error('Failed to load conversation:', err);
+            document.getElementById('messages-list').innerHTML =
+                '<div class="alert alert-danger">Failed to load conversation</div>';
+        });
+}
+
+function renderMessages(messages) {
+    const container = document.getElementById('messages-list');
+
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="text-center py-4 text-muted">No messages</div>';
+        return;
+    }
+
+    container.innerHTML = messages.map(msg => {
+        const isUser = msg.role === 'user';
+        const alignClass = isUser ? 'justify-content-end' : 'justify-content-start';
+        const msgClass = isUser ? 'user-message' : 'assistant-message';
+        const roleLabel = isUser ? 'You' : 'Assistant';
+        const roleBadge = isUser ? 'bg-primary' : 'bg-secondary';
+
+        let contentHtml = '';
+
+        // Thinking block (for assistant)
+        if (msg.thinking_text) {
+            contentHtml += `
+                <div class="thinking-block mb-2">
+                    <div class="thinking-header">
+                        <i class="bi bi-lightbulb"></i> Thinking
+                    </div>
+                    <pre class="thinking-content mb-0">${escapeHtml(msg.thinking_text)}</pre>
+                </div>
+            `;
+        }
+
+        // Main content
+        if (msg.content) {
+            contentHtml += `<div class="message-content">${formatContent(msg.content)}</div>`;
+        }
+
+        // Tool use
+        if (msg.tool_name) {
+            contentHtml += `
+                <div class="tool-use-block mt-2">
+                    <div class="tool-header">
+                        <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
+                    </div>
+                    ${msg.tool_input ? `<pre class="tool-input mb-0">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
+                </div>
+            `;
+        }
+
+        return `
+            <div class="d-flex ${alignClass} mb-3">
+                <div class="message-bubble ${msgClass}">
+                    <div class="message-header">
+                        <span class="badge ${roleBadge}">${roleLabel}</span>
+                        ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                    </div>
+                    ${contentHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function formatContent(content) {
+    // Basic markdown-like formatting
+    let formatted = escapeHtml(content);
+
+    // Code blocks
+    formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        return `<pre class="code-block"><code>${code.trim()}</code></pre>`;
+    });
+
+    // Inline code
+    formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+    // Line breaks
+    formatted = formatted.replace(/\n/g, '<br>');
+
+    return formatted;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function exportSession(format) {
+    const params = new URLSearchParams({
+        project_id: projectId,
+        platform: platform,
+        format: format
+    });
+
+    fetch(`/api/export/${encodeURIComponent(sessionId)}?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            let blob, filename;
+
+            if (format === 'json') {
+                blob = new Blob([JSON.stringify(JSON.parse(data.content), null, 2)], { type: 'application/json' });
+                filename = `conversation-${sessionId}.json`;
+            } else {
+                blob = new Blob([data.content], { type: 'text/markdown' });
+                filename = `conversation-${sessionId}.md`;
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        })
+        .catch(err => {
+            console.error('Export failed:', err);
+            alert('Export failed');
+        });
+}
+</script>
+{% endblock %}
