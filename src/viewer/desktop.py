@@ -6,9 +6,14 @@ import time
 import webbrowser
 from pathlib import Path
 
+# Ensure src is in path for PyInstaller
+src_path = Path(__file__).parent.parent
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import uvicorn
 
-from .tray import TrayApp
+from viewer.tray import TrayApp
 
 
 def get_resource_path(relative_path: str) -> Path:
