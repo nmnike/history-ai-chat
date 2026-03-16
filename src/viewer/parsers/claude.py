@@ -79,7 +79,12 @@ class ClaudeParser:
                     if block.get("type") == "text":
                         texts.append(block.get("text", ""))
                     elif block.get("type") == "tool_result":
-                        texts.append(f"[Tool Result: {block.get('tool_use_id', 'unknown')}]")
+                        # Extract actual tool result content
+                        tool_content = block.get("content", "")
+                        if tool_content:
+                            texts.append(str(tool_content))
+                        else:
+                            texts.append(f"[Tool Result: {block.get('tool_use_id', 'unknown')}]")
                 else:
                     texts.append(str(block))
             content = "\n".join(texts)

@@ -48,7 +48,7 @@ def test_parse_user_message_with_list_content(tmp_path):
 
     assert len(messages) == 1
     assert "Check this file" in messages[0].content
-    assert "[Tool Result: tool-456]" in messages[0].content
+    assert "file content" in messages[0].content  # tool_result content is included
 
 
 def test_parse_assistant_message(tmp_path):
