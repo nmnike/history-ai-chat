@@ -165,7 +165,7 @@ function loadFavorites() {
                 const preview = fav.preview ? escapeHtml(fav.preview.substring(0, 100)) : '';
 
                 return `
-                    <a href="/conversation/${encodeURIComponent(fav.session_id)}?platform=${fav.platform}" class="list-group-item list-group-item-action">
+                    <a href="/conversation/${encodeURIComponent(fav.session_id)}?platform=${fav.platform}&project_id=${encodeURIComponent(fav.project || '')}" class="list-group-item list-group-item-action">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <div class="fw-bold">${escapeHtml(fav.project || 'Unknown')}</div>
