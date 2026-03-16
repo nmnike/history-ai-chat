@@ -51,8 +51,11 @@
 <!-- Favorites Section -->
 <div class="row mb-3" id="favorites-section" style="display: none;">
     <div class="col-12">
-        <h5><i class="bi bi-star-fill text-warning"></i> Favorites</h5>
-        <div id="favorites-list" class="list-group mb-3">
+        <h5 id="favorites-header" style="cursor: pointer; user-select: none;">
+            <i class="bi bi-chevron-right" id="favorites-chevron"></i>
+            <i class="bi bi-star-fill text-warning"></i> Favorites
+        </h5>
+        <div id="favorites-list" class="list-group mb-3" style="display: none;">
         </div>
     </div>
 </div>
@@ -78,6 +81,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set default date filter to today
     document.getElementById('date-filter').value = 'today';
     document.getElementById('date-filter').addEventListener('change', loadProjects);
+
+    // Favorites toggle
+    document.getElementById('favorites-header').addEventListener('click', toggleFavorites);
+
     loadFavorites();
     loadProjects();
     initSearch();
@@ -145,6 +152,11 @@ function loadFavorites() {
             }
 
             section.style.display = '';
+
+            // Restore collapse state from localStorage
+            const isExpanded = localStorage.getItem('favorites-expanded') === 'true';
+            setFavoritesExpanded(isExpanded);
+
             list.innerHTML = favorites.map(fav => {
                 const platformBadge = fav.platform === 'codex'
                     ? '<span class="badge bg-info">Codex</span>'
@@ -171,6 +183,28 @@ function loadFavorites() {
         .catch(err => {
             console.error('Failed to load favorites:', err);
         });
+}
+
+function toggleFavorites() {
+    const list = document.getElementById('favorites-list');
+    const isExpanded = list.style.display !== 'none';
+    setFavoritesExpanded(!isExpanded);
+    localStorage.setItem('favorites-expanded', !isExpanded);
+}
+
+function setFavoritesExpanded(expanded) {
+    const list = document.getElementById('favorites-list');
+    const chevron = document.getElementById('favorites-chevron');
+
+    if (expanded) {
+        list.style.display = '';
+        chevron.classList.remove('bi-chevron-right');
+        chevron.classList.add('bi-chevron-down');
+    } else {
+        list.style.display = 'none';
+        chevron.classList.remove('bi-chevron-down');
+        chevron.classList.add('bi-chevron-right');
+    }
 }
 
 function initSearch() {
