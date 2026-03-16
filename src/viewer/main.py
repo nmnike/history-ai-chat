@@ -373,8 +373,37 @@ async def list_favorites():
 
 
 @app.post("/api/favorites/{session_id}")
-async def add_favorite(session_id: str):
+async def add_favorite(
+    session_id: str,
+    project_id: str = Query(default=""),
+    platform: str = Query(default="claude")
+):
     """Add session to favorites"""
+    # Find session to cache its metadata
+    session: Optional[Session] = None
+
+    if platform == "claude":
+        sessions = claude_parser.get_sessions(project_id)
+        for s in sessions:
+            if s.id == session_id:
+                session = s
+                break
+    elif platform == "codex":
+        for s in codex_parser.get_sessions():
+            if s.id == session_id:
+                session = s
+                break
+
+    if session:
+        # Cache session metadata
+        cache_db.cache_session({
+            "id": session_id,
+            "project": session.project_name or project_id,
+            "platform": platform,
+            "preview": session.first_message or "",
+            "message_count": len(session.messages)
+        })
+
     cache_db.add_favorite(session_id)
     return {"status": "added", "session_id": session_id}
 

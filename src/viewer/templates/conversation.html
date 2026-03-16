@@ -306,7 +306,7 @@ function toggleFavorite() {
     const isFav = btn.classList.contains('bi-star-fill');
 
     const method = isFav ? 'DELETE' : 'POST';
-    const url = `/api/favorites/${encodeURIComponent(sessionId)}`;
+    const url = `/api/favorites/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}&platform=${encodeURIComponent(platform)}`;
 
     fetch(url, { method: method })
         .then(response => response.json())
