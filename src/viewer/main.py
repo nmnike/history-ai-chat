@@ -617,23 +617,27 @@ def export_to_markdown(session: Session) -> str:
             if msg.content:
                 lines.append(f"```\n{msg.content}\n```")
         else:
-            # Format timestamp for user/assistant (convert UTC to local time)
+            # Format timestamp for user/assistant/system (convert UTC to local time)
             local_ts = to_local_datetime(msg.timestamp)
             time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
 
-            if msg.role == "user":
-                lines.append(f"\n### User{time_str}\n")
-                if msg.content:
-                    lines.append(msg.content)
-            else:
+            # Determine role label
+            role_label = msg.role.capitalize()  # User, Assistant, System
+            token_str = ""
+
+            if msg.role == "assistant":
                 # Assistant - add token badge if tokens present
-                token_str = ""
                 if msg.input_tokens > 0 or msg.output_tokens > 0:
                     token_str = f" • {format_token_count(msg.input_tokens)}/{format_token_count(msg.output_tokens)} tokens"
 
-                lines.append(f"\n### Assistant{time_str}{token_str}\n")
-                if msg.content:
-                    lines.append(msg.content)
+            lines.append(f"\n### {role_label}{time_str}{token_str}\n")
+
+            # Wrap content in code fence to preserve formatting
+            if msg.content:
+                lines.append(f"```\n{msg.content}\n```")
+
+            # Assistant-specific: thinking and tool use
+            if msg.role == "assistant":
                 if msg.thinking_text:
                     lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
                 if msg.tool_name:
