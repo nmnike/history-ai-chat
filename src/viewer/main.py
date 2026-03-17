@@ -562,10 +562,16 @@ def format_token_count(n: int) -> str:
 
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
+    from collections import Counter
+
     # Calculate aggregate statistics
     user_count = sum(1 for m in session.messages if m.role == "user")
     assistant_count = sum(1 for m in session.messages if m.role == "assistant")
     tool_calls = sum(1 for m in session.messages if m.tool_name)
+
+    # Tool breakdown
+    tool_counts = Counter(m.tool_name for m in session.messages if m.tool_name)
+    tool_breakdown = ", ".join(f"{name}: {count}" for name, count in tool_counts.most_common())
 
     total_input = sum(m.input_tokens for m in session.messages)
     total_output = sum(m.output_tokens for m in session.messages)
@@ -575,8 +581,14 @@ def export_to_markdown(session: Session) -> str:
     # Format created_at
     created_str = session.created_at.strftime("%Y-%m-%d %H:%M") if session.created_at else "Unknown"
 
+    # Build tool stats with breakdown
+    if tool_calls > 0 and tool_breakdown:
+        tool_stats = f"🔧 {tool_calls} tool calls ({tool_breakdown})"
+    else:
+        tool_stats = f"🔧 {tool_calls} tool calls"
+
     # Build stats line
-    stats = f"👤 {user_count} • 🤖 {assistant_count} • 🔧 {tool_calls} tool calls • {format_token_count(total_input)}/{format_token_count(total_output)} tokens (cache: {format_token_count(total_cache_read)} read, {format_token_count(total_cache_created)} created)"
+    stats = f"👤 {user_count} • 🤖 {assistant_count} • {tool_stats} • {format_token_count(total_input)}/{format_token_count(total_output)} tokens (cache: {format_token_count(total_cache_read)} read, {format_token_count(total_cache_created)} created)"
 
     lines = [
         f"# Conversation: {session.id}",

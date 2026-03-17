@@ -52,10 +52,28 @@ def test_export_markdown_stats_header():
     # Check stats line format
     assert "👤 1" in result  # 1 user message
     assert "🤖 2" in result  # 2 assistant messages
-    assert "🔧 1 tool calls" in result  # 1 tool call
+    assert "🔧 1 tool calls (Read: 1)" in result  # tool breakdown
     assert "600/150 tokens" in result  # total input/output
     assert "cache:" in result
     assert "**Created:** 2026-03-17 14:30" in result
+
+
+def test_export_markdown_tool_breakdown():
+    """Tool breakdown shows multiple tools sorted by count"""
+    messages = [
+        make_message("user", "Hello"),
+        make_message("assistant", "A", tool_name="Read"),
+        make_message("assistant", "B", tool_name="Bash"),
+        make_message("assistant", "C", tool_name="Read"),
+        make_message("assistant", "D", tool_name="Edit"),
+        make_message("assistant", "E", tool_name="Bash"),
+        make_message("assistant", "F", tool_name="Read"),
+    ]
+    session = make_session(messages=messages)
+    result = export_to_markdown(session)
+
+    # 6 tool calls with breakdown, sorted by count descending
+    assert "🔧 6 tool calls (Read: 3, Bash: 2, Edit: 1)" in result
 
 
 def test_export_markdown_message_timestamp():
@@ -111,7 +129,7 @@ def test_export_markdown_tool_result_not_counted():
     result = export_to_markdown(session)
     assert "👤 1" in result  # tool_result excluded from user count
     assert "🤖 1" in result
-    assert "🔧 1 tool calls" in result  # tool_result not counted as tool call
+    assert "🔧 1 tool calls (Read: 1)" in result  # tool_result not counted as tool call
 
 
 def test_export_markdown_empty_tool_input():
