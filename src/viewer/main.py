@@ -68,7 +68,11 @@ def message_to_dict(msg: Message) -> dict:
         "message_type": msg.message_type,
         "tool_name": msg.tool_name,
         "tool_input": msg.tool_input,
-        "thinking_text": msg.thinking_text
+        "thinking_text": msg.thinking_text,
+        "input_tokens": msg.input_tokens,
+        "output_tokens": msg.output_tokens,
+        "cache_read_tokens": msg.cache_read_tokens,
+        "cache_creation_tokens": msg.cache_creation_tokens
     }
 
 
