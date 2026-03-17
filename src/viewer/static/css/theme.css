@@ -184,6 +184,11 @@ body {
     background-color: var(--assistant-bg);
 }
 
+.system-message {
+    background-color: var(--system-bg, rgba(255, 193, 7, 0.1));
+    border-left: 3px solid var(--system-border, #ffc107);
+}
+
 /* Split layout: user left, assistant right */
 .messages.split-layout .user-message {
     margin-right: auto;

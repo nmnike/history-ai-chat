@@ -145,11 +145,12 @@ function renderMessages(messages) {
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
+        const isSystem = msg.role === 'system';
         const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
-        const msgClass = isUser ? 'user-message' : 'assistant-message';
-        const roleLabel = isUser ? 'You' : (isToolResult ? 'Tool Result' : 'Assistant');
-        const roleBadge = isUser ? 'bg-primary' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary');
-        const roleIcon = isUser ? '' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : '');
+        const msgClass = isUser ? 'user-message' : (isSystem ? 'system-message' : 'assistant-message');
+        const roleLabel = isUser ? 'You' : (isSystem ? 'System' : (isToolResult ? 'Tool Result' : 'Assistant'));
+        const roleBadge = isUser ? 'bg-primary' : (isSystem ? 'bg-warning text-dark' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary'));
+        const roleIcon = isUser ? '' : (isSystem ? '<i class="bi bi-gear"></i> ' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : ''));
 
         // Track tool_name for tool_result association
         if (msg.tool_name) {
@@ -352,6 +353,7 @@ function updateFavoriteIcon(isFavorite) {
 function updateSessionStats(messages) {
     const stats = {
         user: 0,
+        system: 0,
         assistant: 0,
         tools: {},
         tokens: {
@@ -365,6 +367,8 @@ function updateSessionStats(messages) {
     messages.forEach(msg => {
         if (msg.role === 'user') {
             stats.user++;
+        } else if (msg.role === 'system') {
+            stats.system++;
         } else if (msg.role === 'assistant') {
             stats.assistant++;
         }
@@ -382,6 +386,9 @@ function updateSessionStats(messages) {
     if (!container) return;
 
     let html = `<span class="badge bg-primary me-1 stat-badge" data-filter="user" onclick="toggleFilter('user')"><i class="bi bi-person"></i> ${stats.user}</span>`;
+    if (stats.system > 0) {
+        html += `<span class="badge bg-warning text-dark me-1 stat-badge" data-filter="system" onclick="toggleFilter('system')"><i class="bi bi-gear"></i> ${stats.system}</span>`;
+    }
     html += `<span class="badge bg-secondary me-1 stat-badge" data-filter="assistant" onclick="toggleFilter('assistant')"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
 
     const toolNames = Object.keys(stats.tools);
@@ -447,6 +454,8 @@ function toggleFilter(filter) {
             const role = b.dataset.role;
 
             if (filter === 'user' && role === 'user') {
+                b.style.display = '';
+            } else if (filter === 'system' && role === 'system') {
                 b.style.display = '';
             } else if (filter === 'assistant' && role === 'assistant') {
                 b.style.display = '';
