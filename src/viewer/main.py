@@ -551,6 +551,15 @@ async def export_session(
     )
 
 
+def format_token_count(n: int) -> str:
+    """Format token count with K/M suffix"""
+    if n >= 1000000:
+        return f"{round(n/1000000, 1)}M"
+    if n >= 1000:
+        return f"{round(n/1000, 1)}K"
+    return str(n)
+
+
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
     lines = [
