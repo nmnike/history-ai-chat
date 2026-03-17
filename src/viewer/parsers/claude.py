@@ -20,6 +20,10 @@ class Message:
     tool_name: Optional[str] = None
     tool_input: Optional[dict] = None
     thinking_text: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 @dataclass
