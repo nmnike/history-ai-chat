@@ -341,10 +341,10 @@ class ClaudeParser:
 
             sessions = list(project_dir.glob("*.jsonl"))
             if sessions:
-                project_name = project_dir.name.replace("-", "/").replace("_", " ")
+                # Use directory name as-is (project-id format like "A--ai-dev-history-ai-chat")
                 projects.append({
                     "id": project_dir.name,
-                    "name": project_name,
+                    "name": project_dir.name,
                     "path": str(project_dir),
                     "session_count": len(sessions)
                 })
