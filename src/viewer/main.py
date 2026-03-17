@@ -562,10 +562,27 @@ def format_token_count(n: int) -> str:
 
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
+    # Calculate aggregate statistics
+    user_count = sum(1 for m in session.messages if m.role == "user")
+    assistant_count = sum(1 for m in session.messages if m.role == "assistant")
+    tool_calls = sum(1 for m in session.messages if m.tool_name)
+
+    total_input = sum(m.input_tokens for m in session.messages)
+    total_output = sum(m.output_tokens for m in session.messages)
+    total_cache_read = sum(m.cache_read_tokens for m in session.messages)
+    total_cache_created = sum(m.cache_creation_tokens for m in session.messages)
+
+    # Format created_at
+    created_str = session.created_at.strftime("%Y-%m-%d %H:%M") if session.created_at else "Unknown"
+
+    # Build stats line
+    stats = f"👤 {user_count} • 🤖 {assistant_count} • 🔧 {tool_calls} tool calls • {format_token_count(total_input)}/{format_token_count(total_output)} tokens (cache: {format_token_count(total_cache_read)} read, {format_token_count(total_cache_created)} created)"
+
     lines = [
         f"# Conversation: {session.id}",
         f"\n**Project:** {session.project_name}",
-        f"**Created:** {session.created_at.isoformat() if session.created_at else 'Unknown'}",
+        f"**Created:** {created_str}",
+        f"**Stats:** {stats}",
         "\n---\n"
     ]
 
