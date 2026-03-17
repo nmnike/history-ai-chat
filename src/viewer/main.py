@@ -166,15 +166,40 @@ async def list_projects(date: str = Query(default="today")):
 
     # Claude projects
     for project in claude_parser.get_projects():
-        session_count = sum(
-            1 for s in claude_parser.get_sessions(project["id"])
-            if matches_date(s.created_at)
+        sessions = [s for s in claude_parser.get_sessions(project["id"]) if matches_date(s.created_at)]
+        session_count = len(sessions)
+
+        # Aggregate tokens
+        total_input = sum(
+            msg.input_tokens
+            for s in sessions
+            for msg in s.messages
         )
+        total_output = sum(
+            msg.output_tokens
+            for s in sessions
+            for msg in s.messages
+        )
+        total_cache_read = sum(
+            msg.cache_read_tokens
+            for s in sessions
+            for msg in s.messages
+        )
+        total_cache_creation = sum(
+            msg.cache_creation_tokens
+            for s in sessions
+            for msg in s.messages
+        )
+
         if session_count > 0 or filter_mode == "all":
             projects.append({
                 **project,
                 "session_count": session_count,
-                "platform": "claude"
+                "platform": "claude",
+                "total_input_tokens": total_input,
+                "total_output_tokens": total_output,
+                "total_cache_read_tokens": total_cache_read,
+                "total_cache_creation_tokens": total_cache_creation
             })
 
     # Codex sessions grouped by project
@@ -190,13 +215,45 @@ async def list_projects(date: str = Query(default="today")):
                 "name": project_name,
                 "path": session.project_path,
                 "session_count": 0,
-                "platform": "codex"
+                "platform": "codex",
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_cache_read_tokens": 0,
+                "total_cache_creation_tokens": 0
             }
+
+        # Aggregate tokens for codex session
         codex_projects[project_name]["session_count"] += 1
+        codex_projects[project_name]["total_input_tokens"] += sum(
+            msg.input_tokens for msg in session.messages
+        )
+        codex_projects[project_name]["total_output_tokens"] += sum(
+            msg.output_tokens for msg in session.messages
+        )
+        codex_projects[project_name]["total_cache_read_tokens"] += sum(
+            msg.cache_read_tokens for msg in session.messages
+        )
+        codex_projects[project_name]["total_cache_creation_tokens"] += sum(
+            msg.cache_creation_tokens for msg in session.messages
+        )
 
     projects.extend(codex_projects.values())
 
-    return {"projects": sorted(projects, key=lambda x: x["name"])}
+    # Calculate total tokens for dashboard
+    total_input = sum(p.get("total_input_tokens", 0) for p in projects)
+    total_output = sum(p.get("total_output_tokens", 0) for p in projects)
+    total_cache_read = sum(p.get("total_cache_read_tokens", 0) for p in projects)
+    total_cache_creation = sum(p.get("total_cache_creation_tokens", 0) for p in projects)
+
+    return {
+        "projects": sorted(projects, key=lambda x: x["name"]),
+        "token_stats": {
+            "input": total_input,
+            "output": total_output,
+            "cache_read": total_cache_read,
+            "cache_creation": total_cache_creation
+        }
+    }
 
 
 @app.get("/api/sessions/{project_id}")
