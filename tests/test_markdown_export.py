@@ -91,3 +91,34 @@ def test_export_markdown_message_no_tokens():
     result = export_to_markdown(session)
 
     assert "### Assistant • 14:30:00\n" in result  # No token badge
+
+
+def test_export_markdown_created_at_unknown():
+    """When created_at is None, show 'Unknown'"""
+    session = make_session(messages=[], created_at=None)
+    result = export_to_markdown(session)
+    assert "**Created:** Unknown" in result
+
+
+def test_export_markdown_tool_result_not_counted():
+    """tool_result messages excluded from user_count and tool_calls"""
+    messages = [
+        make_message("user", "Hello"),
+        make_message("tool_result", "result data"),
+        make_message("assistant", "Hi", tool_name="Read"),
+    ]
+    session = make_session(messages=messages)
+    result = export_to_markdown(session)
+    assert "👤 1" in result  # tool_result excluded from user count
+    assert "🤖 1" in result
+    assert "🔧 1 tool calls" in result  # tool_result not counted as tool call
+
+
+def test_export_markdown_empty_tool_input():
+    """Empty tool_input omits JSON block"""
+    messages = [
+        make_message("assistant", "Done", tool_name="Bash", tool_input={}),
+    ]
+    session = make_session(messages=messages)
+    result = export_to_markdown(session)
+    assert "**Tool: Bash**\n" in result  # No JSON block after tool name
