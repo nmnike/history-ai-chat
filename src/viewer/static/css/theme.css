@@ -425,6 +425,10 @@ body {
     background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
 }
 
+.stat-icon.tokens {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
 .stat-info {
     display: flex;
     flex-direction: column;

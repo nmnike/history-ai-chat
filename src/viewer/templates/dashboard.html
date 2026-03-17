@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - History AI Chat{% endblock %}
+{% block title %}History AI Chat{% endblock %}
 
 {% block content %}
 <!-- Stats + Search Row -->
@@ -24,6 +24,15 @@
                 <div class="stat-info">
                     <span class="stat-value" id="projects-count">-</span>
                     <span class="stat-label">Projects</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon tokens">
+                    <i class="bi bi-cpu"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="tokens-count">-</span>
+                    <span class="stat-label">Tokens</span>
                 </div>
             </div>
 
@@ -100,9 +109,20 @@ function loadProjects() {
         .then(response => response.json())
         .then(data => {
             const projects = data.projects || [];
+            const tokenStats = data.token_stats || {};
             let totalSessions = 0;
 
             document.getElementById('projects-count').textContent = projects.length;
+
+            // Update tokens display
+            const inputK = formatTokens(tokenStats.input || 0);
+            const outputK = formatTokens(tokenStats.output || 0);
+            document.getElementById('tokens-count').textContent = `${inputK} / ${outputK}`;
+            document.getElementById('tokens-count').title =
+                `Input: ${(tokenStats.input || 0).toLocaleString()}\n` +
+                `Output: ${(tokenStats.output || 0).toLocaleString()}\n` +
+                `Cache Read: ${(tokenStats.cache_read || 0).toLocaleString()}\n` +
+                `Cache Create: ${(tokenStats.cache_creation || 0).toLocaleString()}`;
 
             const listEl = document.getElementById('projects-list');
 
@@ -117,12 +137,16 @@ function loadProjects() {
                 const platformBadge = p.platform === 'codex'
                     ? '<span class="badge bg-info">Codex</span>'
                     : '<span class="badge bg-warning text-dark">Claude</span>';
+                const tokensBadge = (p.total_input_tokens || p.total_output_tokens)
+                    ? `<span class="badge bg-success ms-1">${formatTokens(p.total_input_tokens || 0)}/${formatTokens(p.total_output_tokens || 0)}</span>`
+                    : '';
                 return `
                     <a href="/project/${encodeURIComponent(p.id)}?platform=${p.platform}&date=${dateFilter}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                         <div>
                             <i class="bi bi-folder me-2"></i>
                             ${escapeHtml(p.name)}
                             ${platformBadge}
+                            ${tokensBadge}
                         </div>
                         <span class="badge bg-secondary rounded-pill">${p.session_count || 0} sessions</span>
                     </a>
@@ -136,6 +160,12 @@ function loadProjects() {
             document.getElementById('projects-list').innerHTML =
                 '<div class="alert alert-danger">Failed to load projects</div>';
         });
+}
+
+function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
 }
 
 function loadFavorites() {
