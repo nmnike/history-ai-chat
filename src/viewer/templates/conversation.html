@@ -199,6 +199,7 @@ function renderMessages(messages) {
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                    ${!isUser && (msg.input_tokens || msg.output_tokens) ? `<span class="badge bg-success ms-1" style="font-size: 0.65rem;">${formatTokens(msg.input_tokens || 0)}/${formatTokens(msg.output_tokens || 0)}</span>` : ''}
                     <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
                 </div>
                 <div class="message-body collapse-content" ${collapsedStyle}>${contentHtml}</div>
