@@ -45,6 +45,12 @@ templates = Jinja2Templates(directory=str(templates_dir))
 
 def session_to_dict(session: Session, platform: str) -> dict:
     """Convert Session to dict for JSON response"""
+    # Aggregate tokens from all messages
+    input_tokens = sum(m.input_tokens for m in session.messages)
+    output_tokens = sum(m.output_tokens for m in session.messages)
+    cache_read_tokens = sum(m.cache_read_tokens for m in session.messages)
+    cache_creation_tokens = sum(m.cache_creation_tokens for m in session.messages)
+
     return {
         "id": session.id,
         "project_name": session.project_name,
@@ -52,7 +58,11 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "platform": platform,
         "first_message": session.first_message,
         "created_at": session.created_at.isoformat() if session.created_at else None,
-        "message_count": len(session.messages)
+        "message_count": len(session.messages),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens
     }
 
 
@@ -317,7 +327,21 @@ async def list_sessions(
     else:
         raise HTTPException(status_code=400, detail="Invalid platform. Use 'claude' or 'codex'")
 
-    return {"sessions": sessions}
+    # Aggregate tokens for project
+    total_input = sum(s.get("input_tokens", 0) for s in sessions)
+    total_output = sum(s.get("output_tokens", 0) for s in sessions)
+    total_cache_read = sum(s.get("cache_read_tokens", 0) for s in sessions)
+    total_cache_creation = sum(s.get("cache_creation_tokens", 0) for s in sessions)
+
+    return {
+        "sessions": sessions,
+        "token_stats": {
+            "input": total_input,
+            "output": total_output,
+            "cache_read": total_cache_read,
+            "cache_creation": total_cache_creation
+        }
+    }
 
 
 @app.get("/api/conversation/{session_id}")

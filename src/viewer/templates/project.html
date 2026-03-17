@@ -25,6 +25,8 @@
         <h4>
             <i class="bi bi-folder"></i> {{ project_id }}
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+            <span id="project-tokens" class="badge bg-success ms-1">-</span>
+            <span id="sessions-count" class="badge bg-secondary rounded-pill ms-1">- sessions</span>
         </h4>
         <p class="text-muted" id="project-path"></p>
     </div>
@@ -41,7 +43,6 @@
                 <option value="week">Last 7 days</option>
                 <option value="all">All time</option>
             </select>
-            <span id="sessions-count" class="badge bg-secondary"></span>
         </div>
     </div>
 </div>
@@ -97,10 +98,22 @@ function loadSessions() {
         .then(response => response.json())
         .then(data => {
             const sessions = data.sessions || [];
+            const tokenStats = data.token_stats || {};
             const listEl = document.getElementById('sessions-list');
             const countEl = document.getElementById('sessions-count');
+            const tokensEl = document.getElementById('project-tokens');
 
             countEl.textContent = sessions.length + ' sessions';
+
+            // Update project tokens
+            const inputK = formatTokens(tokenStats.input || 0);
+            const outputK = formatTokens(tokenStats.output || 0);
+            tokensEl.textContent = `${inputK}/${outputK}`;
+            tokensEl.title =
+                `Input: ${(tokenStats.input || 0).toLocaleString()}\n` +
+                `Output: ${(tokenStats.output || 0).toLocaleString()}\n` +
+                `Cache Read: ${(tokenStats.cache_read || 0).toLocaleString()}\n` +
+                `Cache Create: ${(tokenStats.cache_creation || 0).toLocaleString()}`;
 
             if (sessions.length === 0) {
                 listEl.innerHTML = '<div class="text-center py-4 text-muted">No sessions found for selected date</div>';
@@ -115,6 +128,9 @@ function loadSessions() {
 
             listEl.innerHTML = sessions.map(s => {
                 const date = s.created_at ? new Date(s.created_at).toLocaleString() : 'Unknown date';
+                const tokensBadge = (s.input_tokens || s.output_tokens)
+                    ? `<span class="badge bg-success">${formatTokens(s.input_tokens || 0)}/${formatTokens(s.output_tokens || 0)}</span>`
+                    : '';
                 return `
                     <a href="/conversation/${encodeURIComponent(s.id)}?project_id=${encodeURIComponent(projectId)}&platform=${platform}"
                        class="list-group-item list-group-item-action">
@@ -123,7 +139,10 @@ function loadSessions() {
                                 <div class="fw-bold">${escapeHtml(s.first_message || 'No preview')}</div>
                                 <small class="text-muted">${date}</small>
                             </div>
-                            <span class="badge bg-secondary rounded-pill">${s.message_count} messages</span>
+                            <div class="text-end">
+                                ${tokensBadge}
+                                <span class="badge bg-secondary rounded-pill ms-1">${s.message_count} msgs</span>
+                            </div>
                         </div>
                     </a>
                 `;
@@ -134,6 +153,12 @@ function loadSessions() {
             document.getElementById('sessions-list').innerHTML =
                 '<div class="alert alert-danger">Failed to load sessions</div>';
         });
+}
+
+function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
 }
 
 function escapeHtml(text) {
