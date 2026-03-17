@@ -832,3 +832,37 @@ body {
 #messages-container .card-body {
     padding: 16px;
 }
+
+/* Token tooltip on hover */
+.token-badge-wrapper {
+    cursor: default;
+}
+
+.token-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    margin-top: 4px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--shadow);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s, visibility 0.15s;
+}
+
+.token-tooltip hr {
+    margin: 4px 0;
+    border-color: var(--border-color);
+}
+
+.token-badge-wrapper:hover .token-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
