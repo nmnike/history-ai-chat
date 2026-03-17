@@ -56,3 +56,38 @@ def test_export_markdown_stats_header():
     assert "600/150 tokens" in result  # total input/output
     assert "cache:" in result
     assert "**Created:** 2026-03-17 14:30" in result
+
+
+def test_export_markdown_message_timestamp():
+    messages = [
+        make_message("user", "Hello", timestamp=datetime(2026, 3, 17, 14, 30, 5)),
+        make_message("assistant", "Hi!", timestamp=datetime(2026, 3, 17, 14, 30, 10), input_tokens=100, output_tokens=50),
+    ]
+    session = make_session(messages=messages)
+
+    result = export_to_markdown(session)
+
+    assert "### User • 14:30:05" in result
+    assert "### Assistant • 14:30:10 • 100/50 tokens" in result
+
+
+def test_export_markdown_message_no_timestamp():
+    messages = [
+        make_message("user", "Hello", timestamp=None),
+    ]
+    session = make_session(messages=messages)
+
+    result = export_to_markdown(session)
+
+    assert "### User\n" in result  # No time suffix
+
+
+def test_export_markdown_message_no_tokens():
+    messages = [
+        make_message("assistant", "Hi!", timestamp=datetime(2026, 3, 17, 14, 30, 0)),
+    ]
+    session = make_session(messages=messages)
+
+    result = export_to_markdown(session)
+
+    assert "### Assistant • 14:30:00\n" in result  # No token badge

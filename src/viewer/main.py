@@ -588,26 +588,34 @@ def export_to_markdown(session: Session) -> str:
 
     for msg in session.messages:
         if msg.role == "tool_result":
-            # Tool result - wrap in code block
+            # Tool result - no timestamp per spec
             lines.append(f"\n### Tool Result\n")
             if msg.content:
                 lines.append(f"```\n{msg.content}\n```")
-        elif msg.role == "user":
-            lines.append(f"\n### User\n")
-            if msg.content:
-                lines.append(msg.content)
         else:
-            # Assistant
-            lines.append(f"\n### Assistant\n")
-            if msg.content:
-                lines.append(msg.content)
-            if msg.thinking_text:
-                lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
-            if msg.tool_name:
-                tool_input = ""
-                if msg.tool_input:
-                    tool_input = f"\n```json\n{json.dumps(msg.tool_input, indent=2, ensure_ascii=False)}\n```"
-                lines.append(f"\n**Tool: {msg.tool_name}**{tool_input}")
+            # Format timestamp for user/assistant
+            time_str = f" • {msg.timestamp.strftime('%H:%M:%S')}" if msg.timestamp else ""
+
+            if msg.role == "user":
+                lines.append(f"\n### User{time_str}\n")
+                if msg.content:
+                    lines.append(msg.content)
+            else:
+                # Assistant - add token badge if tokens present
+                token_str = ""
+                if msg.input_tokens > 0 or msg.output_tokens > 0:
+                    token_str = f" • {format_token_count(msg.input_tokens)}/{format_token_count(msg.output_tokens)} tokens"
+
+                lines.append(f"\n### Assistant{time_str}{token_str}\n")
+                if msg.content:
+                    lines.append(msg.content)
+                if msg.thinking_text:
+                    lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
+                if msg.tool_name:
+                    tool_input = ""
+                    if msg.tool_input:
+                        tool_input = f"\n```json\n{json.dumps(msg.tool_input, indent=2, ensure_ascii=False)}\n```"
+                    lines.append(f"\n**Tool: {msg.tool_name}**{tool_input}")
         lines.append("")
 
     return "\n".join(lines)
