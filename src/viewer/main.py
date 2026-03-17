@@ -255,8 +255,12 @@ async def list_projects(date: str = Query(default="today")):
     total_cache_read = sum(p.get("total_cache_read_tokens", 0) for p in projects)
     total_cache_creation = sum(p.get("total_cache_creation_tokens", 0) for p in projects)
 
+    # Sort by total tokens (input + output) descending
+    def total_tokens(p):
+        return p.get("total_input_tokens", 0) + p.get("total_output_tokens", 0)
+
     return {
-        "projects": sorted(projects, key=lambda x: x["name"]),
+        "projects": sorted(projects, key=total_tokens, reverse=True),
         "token_stats": {
             "input": total_input,
             "output": total_output,
