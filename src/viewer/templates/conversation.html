@@ -352,7 +352,13 @@ function updateSessionStats(messages) {
     const stats = {
         user: 0,
         assistant: 0,
-        tools: {}
+        tools: {},
+        tokens: {
+            input: 0,
+            output: 0,
+            cache_read: 0,
+            cache_creation: 0
+        }
     };
 
     messages.forEach(msg => {
@@ -364,6 +370,11 @@ function updateSessionStats(messages) {
         if (msg.tool_name) {
             stats.tools[msg.tool_name] = (stats.tools[msg.tool_name] || 0) + 1;
         }
+        // Accumulate tokens
+        stats.tokens.input += msg.input_tokens || 0;
+        stats.tokens.output += msg.output_tokens || 0;
+        stats.tokens.cache_read += msg.cache_read_tokens || 0;
+        stats.tokens.cache_creation += msg.cache_creation_tokens || 0;
     });
 
     const container = document.getElementById('session-stats');
@@ -381,7 +392,40 @@ function updateSessionStats(messages) {
             });
     }
 
+    // Add tokens badge with breakdown
+    const totalTokens = stats.tokens.input + stats.tokens.output + stats.tokens.cache_read + stats.tokens.cache_creation;
+    if (totalTokens > 0) {
+        const inputK = formatTokens(stats.tokens.input);
+        const outputK = formatTokens(stats.tokens.output);
+        html += `<span class="badge bg-success me-1" style="cursor: pointer;" onclick="toggleTokenBreakdown()" title="Click for details">
+            <i class="bi bi-cpu"></i> ${inputK} in / ${outputK} out
+        </span>`;
+        html += `<span id="token-breakdown" class="badge bg-success me-1" style="display: none;">
+            <div class="text-start" style="font-size: 0.75rem; line-height: 1.4;">
+                <div>Input: ${stats.tokens.input.toLocaleString()}</div>
+                <div>Output: ${stats.tokens.output.toLocaleString()}</div>
+                <div>Cache Read: ${stats.tokens.cache_read.toLocaleString()}</div>
+                <div>Cache Create: ${stats.tokens.cache_creation.toLocaleString()}</div>
+                <hr class="my-1" style="border-color: rgba(255,255,255,0.3);">
+                <div><strong>Total: ${totalTokens.toLocaleString()}</strong></div>
+            </div>
+        </span>`;
+    }
+
     container.innerHTML = html;
+}
+
+function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+}
+
+function toggleTokenBreakdown() {
+    const el = document.getElementById('token-breakdown');
+    if (el) {
+        el.style.display = el.style.display === 'none' ? '' : 'none';
+    }
 }
 
 function toggleFilter(filter) {
