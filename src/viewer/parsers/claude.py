@@ -128,6 +128,13 @@ class ClaudeParser:
         message = data.get("message", {})
         content_blocks = message.get("content", [])
 
+        # Extract usage data
+        usage = message.get("usage", {})
+        input_tokens = usage.get("input_tokens", 0) or 0
+        output_tokens = usage.get("output_tokens", 0) or 0
+        cache_read_tokens = usage.get("cache_read_input_tokens", 0) or 0
+        cache_creation_tokens = usage.get("cache_creation_input_tokens", 0) or 0
+
         if not isinstance(content_blocks, list):
             return Message(
                 role="assistant",
@@ -136,7 +143,11 @@ class ClaudeParser:
                 timestamp=self._parse_timestamp(data.get("timestamp")),
                 session_id=data.get("sessionId", ""),
                 project_path=data.get("cwd", ""),
-                message_type="text"
+                message_type="text",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens
             )
 
         # Extract text, thinking, and tool_use from content blocks
@@ -169,7 +180,11 @@ class ClaudeParser:
             message_type=msg_type,
             tool_name=tool_name,
             tool_input=tool_input,
-            thinking_text=thinking_text
+            thinking_text=thinking_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens
         )
 
     def _parse_timestamp(self, ts) -> Optional[datetime]:
