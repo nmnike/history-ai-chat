@@ -1,6 +1,6 @@
 [project]
 name = "history-ai-chat"
-version = "0.1.0"
+version = "1.0.0"
 description = "Web viewer for Claude Code and Codex CLI conversation history"
 requires-python = ">=3.10"
 dependencies = [

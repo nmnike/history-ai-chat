@@ -27,10 +27,11 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 cache_db = CacheDB(cache_dir / "cache.db")
 
 # FastAPI app
+VERSION = "1.0.0"
 app = FastAPI(
     title="Claude Codex Viewer",
     description="Web viewer for Claude Code and Codex CLI conversation history",
-    version="0.1.0"
+    version=VERSION
 )
 
 # Static files and templates
@@ -41,6 +42,9 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 templates = Jinja2Templates(directory=str(templates_dir))
+
+# Make version available in all templates
+templates.env.globals["VERSION"] = VERSION
 
 
 def session_to_dict(session: Session, platform: str) -> dict:
