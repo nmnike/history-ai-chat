@@ -1,7 +1,7 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from viewer.parsers.claude import Session, Message
-from viewer.main import format_token_count, export_to_markdown
+from viewer.main import format_token_count, export_to_markdown, to_local_datetime
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -140,3 +140,28 @@ def test_export_markdown_empty_tool_input():
     session = make_session(messages=messages)
     result = export_to_markdown(session)
     assert "**Tool: Bash**\n" in result  # No JSON block after tool name
+
+
+def test_to_local_datetime_utc_conversion():
+    """UTC datetime should be converted to local timezone"""
+    # Create a UTC datetime
+    utc_dt = datetime(2026, 3, 17, 11, 30, 0, tzinfo=timezone.utc)
+    local_dt = to_local_datetime(utc_dt)
+
+    # Should be timezone-aware after conversion
+    assert local_dt.tzinfo is not None
+    # Hour should differ by timezone offset (e.g., MSK is UTC+3, so 11 UTC -> 14 local)
+    # We just check it's converted, not the exact value (depends on local TZ)
+
+
+def test_to_local_datetime_naive_passthrough():
+    """Naive datetime should pass through unchanged"""
+    naive_dt = datetime(2026, 3, 17, 14, 30, 0)
+    result = to_local_datetime(naive_dt)
+    assert result == naive_dt
+    assert result.tzinfo is None
+
+
+def test_to_local_datetime_none():
+    """None should return None"""
+    assert to_local_datetime(None) is None

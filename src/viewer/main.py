@@ -560,6 +560,17 @@ def format_token_count(n: int) -> str:
     return str(n)
 
 
+def to_local_datetime(dt):
+    """Convert UTC datetime to local timezone for display"""
+    if dt is None:
+        return None
+    # If timezone-aware, convert to local timezone
+    if dt.tzinfo is not None:
+        return dt.astimezone()
+    # Naive datetime - assume already local
+    return dt
+
+
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
     from collections import Counter
@@ -578,8 +589,9 @@ def export_to_markdown(session: Session) -> str:
     total_cache_read = sum(m.cache_read_tokens for m in session.messages)
     total_cache_created = sum(m.cache_creation_tokens for m in session.messages)
 
-    # Format created_at
-    created_str = session.created_at.strftime("%Y-%m-%d %H:%M") if session.created_at else "Unknown"
+    # Format created_at (convert UTC to local time)
+    local_created = to_local_datetime(session.created_at)
+    created_str = local_created.strftime("%Y-%m-%d %H:%M") if local_created else "Unknown"
 
     # Build tool stats with breakdown
     if tool_calls > 0 and tool_breakdown:
@@ -605,8 +617,9 @@ def export_to_markdown(session: Session) -> str:
             if msg.content:
                 lines.append(f"```\n{msg.content}\n```")
         else:
-            # Format timestamp for user/assistant
-            time_str = f" • {msg.timestamp.strftime('%H:%M:%S')}" if msg.timestamp else ""
+            # Format timestamp for user/assistant (convert UTC to local time)
+            local_ts = to_local_datetime(msg.timestamp)
+            time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
 
             if msg.role == "user":
                 lines.append(f"\n### User{time_str}\n")
