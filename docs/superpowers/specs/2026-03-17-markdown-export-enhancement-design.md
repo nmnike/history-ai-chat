@@ -14,25 +14,30 @@ Add a compact stats line after the session metadata:
 # Conversation: {session_id}
 
 **Project:** {project_name}
-**Created:** {datetime}
-**Stats:** 👤 {user_count} • 🤖 {assistant_count} • 🔧 {tool_calls} tool calls • {input}K/{output}K tokens (cache: {cache_read}K read, {cache_created}K created)
+**Created:** {YYYY-MM-DD HH:MM}
+**Stats:** 👤 {user_count} • 🤖 {assistant_count} • 🔧 {tool_calls} tool calls • {input}/{output} tokens (cache: {cache_read} read, {cache_created} created)
 
 ---
 ```
 
 **Data to calculate:**
-- `user_count`: number of messages with `role == "user"`
+- `user_count`: number of messages with `role == "user"` (excludes tool_result)
 - `assistant_count`: number of messages with `role == "assistant"`
-- `tool_calls`: number of messages with `tool_name` set
+- `tool_calls`: number of messages where `tool_name is not None`
 - `input`: sum of `input_tokens` across all messages
 - `output`: sum of `output_tokens` across all messages
 - `cache_read`: sum of `cache_read_tokens`
 - `cache_created`: sum of `cache_creation_tokens`
 
-**Token formatting:**
-- >= 1,000,000: `{n/1000000}M` (1 decimal)
-- >= 1,000: `{n/1000}K` (1 decimal)
-- < 1,000: `{n}`
+**Datetime format:**
+- Source: `session.created_at`
+- Format: `YYYY-MM-DD HH:MM` (e.g., `2026-03-17 14:32`)
+- If `None`: show `Unknown`
+
+**Token formatting (using `round(n, 1)`):**
+- >= 1,000,000: `round(n/1000000, 1)M` (e.g., `2.5M`)
+- >= 1,000: `round(n/1000, 1)K` (e.g., `45.2K`)
+- < 1,000: `{n}` without suffix (e.g., `500`)
 
 ### 2. Per-Message Metadata
 
@@ -45,14 +50,45 @@ Add a compact stats line after the session metadata:
 
 **Assistant messages:**
 ```markdown
-### Assistant • {HH:MM:SS} • {input}K/{output}K tokens
+### Assistant • {HH:MM:SS} • {input}/{output} tokens
 
 {content}
+
+*Thinking:*
+```
+{thinking_text}
 ```
 
-Timestamp from `msg.timestamp`, formatted as 24-hour time.
+**Tool: {tool_name}**
+```json
+{tool_input}
+```
+```
 
-Token values from `msg.input_tokens` and `msg.output_tokens`, only shown if > 0.
+**Tool result messages:**
+```markdown
+### Tool Result
+
+```
+{content}
+```
+```
+
+**Timestamp:**
+- Format: `HH:MM:SS` in local timezone, 24-hour format
+- Source: `msg.timestamp` (datetime object)
+- If `msg.timestamp is None`: omit time, show only `### User` or `### Assistant`
+
+**Token badge:**
+- Shown on assistant messages only
+- Shown only if `(input_tokens + output_tokens) > 0`
+- Both values always displayed: `{input}/{output} tokens`
+- Uses same formatting as header (K/M suffixes)
+
+**Tool use section:**
+- Shown on messages where `tool_name is not None`
+- Rendered after content and thinking (if present)
+- `tool_input` formatted as JSON code block
 
 ## Implementation
 
@@ -62,13 +98,31 @@ Token values from `msg.input_tokens` and `msg.output_tokens`, only shown if > 0.
 
 **Changes:**
 1. Calculate aggregate statistics before message loop
-2. Add stats line to header
-3. Add timestamp to each message heading
-4. Add token badge to assistant message headings
+2. Add stats line to header with formatted token values
+3. Format `created_at` as `YYYY-MM-DD HH:MM`
+4. Add timestamp to each message heading
+5. Add token badge to assistant message headings (when tokens > 0)
+
+**Helper function needed:**
+```python
+def format_token_count(n: int) -> str:
+    """Format token count with K/M suffix"""
+    if n >= 1000000:
+        return f"{round(n/1000000, 1)}M"
+    if n >= 1000:
+        return f"{round(n/1000, 1)}K"
+    return str(n)
+```
 
 ## Edge Cases
 
-- Missing timestamp: omit time from message heading
-- Zero tokens: omit token badge from that message
-- No tool calls: still show "🔧 0 tool calls"
-- Missing cache tokens: show "0K" for cache values
+- Missing timestamp: show `### User` or `### Assistant` without time
+- Missing `created_at`: show `Unknown`
+- Empty `thinking_text`: omit the entire *Thinking:* section
+- Zero total tokens in message: omit token badge
+- No tool calls: show `🔧 0 tool calls`
+- Zero cache tokens: show `cache: 0 read, 0 created`
+- tool_result messages: not counted in user_count, not counted as tool_calls
+- Assistant with `tool_name` but no `content`: show only tool section
+- Empty `tool_input`: omit JSON block
+- Assistant message with no content, thinking, or tool_use: show only `### Assistant` heading
