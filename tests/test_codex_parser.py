@@ -189,3 +189,51 @@ def test_token_parsing(tmp_path):
     assert messages[1].input_tokens == 1000
     assert messages[1].output_tokens == 50
     assert messages[1].cache_read_tokens == 200
+
+
+def test_parse_compacted_event(tmp_path):
+    """Compaction markers should appear as visible system events."""
+    session_file = tmp_path / "rollout-compacted.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "session_meta",
+            "payload": {"cwd": "/project"}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:00Z",
+            "payload": {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Original question"}]
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "compacted",
+            "timestamp": "2026-03-17T10:00:10Z",
+            "payload": {
+                "message": "",
+                "replacement_history": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Original question"}]
+                    },
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Original answer"}]
+                    }
+                ]
+            }
+        }) + "\n"
+    )
+
+    parser = CodexParser(sessions_path=str(tmp_path))
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["cwd"] == "/project"
+    assert len(messages) == 2
+    assert messages[1].role == "system"
+    assert messages[1].message_type == "compacted"
+    assert "Compacted" in messages[1].content
+    assert "2 messages hidden" in messages[1].content

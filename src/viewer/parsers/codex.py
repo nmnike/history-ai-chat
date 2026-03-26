@@ -84,6 +84,8 @@ class CodexParser:
         # v0.115.0+ format: response_item with nested payload
         if msg_type == "response_item":
             return self._parse_response_item(data, session_file, metadata)
+        elif msg_type == "compacted":
+            return self._parse_compacted(data, session_file, metadata)
         # Legacy format support
         elif msg_type == "message":
             return self._parse_legacy_chat_message(data, session_file)
@@ -129,6 +131,39 @@ class CodexParser:
             project_path=project_path,
             message_type="text"
         )
+
+    def _parse_compacted(self, data: dict, session_file: Path, metadata: dict) -> Message:
+        """Parse Codex compaction marker into a visible history event."""
+        payload = data.get("payload") or {}
+        project_path = metadata.get("cwd") or self._extract_project_from_path(session_file)
+
+        return Message(
+            role="system",
+            content=self._format_compacted_content(payload),
+            uuid=f"compacted-{data.get('timestamp', session_file.stem)}",
+            timestamp=self._parse_timestamp(data.get("timestamp")),
+            session_id=session_file.stem,
+            project_path=project_path,
+            message_type="compacted"
+        )
+
+    def _format_compacted_content(self, payload: dict) -> str:
+        """Build a short human-readable summary for compaction events."""
+        replacement_history = payload.get("replacement_history") or []
+        message_count = sum(
+            1 for item in replacement_history
+            if isinstance(item, dict) and item.get("type") == "message"
+        )
+        summary = (payload.get("message") or "").strip()
+
+        parts = ["Compacted"]
+        if message_count > 0:
+            parts.append(f"{message_count} messages hidden")
+        header = " · ".join(parts)
+
+        if summary:
+            return f"{header}\n\n{summary}"
+        return header
 
     def _is_system_message(self, content: str) -> bool:
         """Detect if message is system-injected (AGENTS.md, environment_context)"""

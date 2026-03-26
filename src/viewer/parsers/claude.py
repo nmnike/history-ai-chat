@@ -10,13 +10,13 @@ from datetime import datetime
 @dataclass
 class Message:
     """Represents a single message in a conversation"""
-    role: str  # user, assistant
+    role: str  # user, assistant, system, tool_result
     content: str
     uuid: str
     timestamp: datetime
     session_id: str
     project_path: str
-    message_type: str = "text"  # text, thinking, tool_use, tool_result
+    message_type: str = "text"  # text, thinking, tool_use, tool_result, compacted
     tool_name: Optional[str] = None
     tool_input: Optional[dict] = None
     thinking_text: Optional[str] = None
@@ -61,9 +61,19 @@ class ClaudeParser:
         # Process and merge streaming chunks
         messages = []
         pending_assistant_chunks = {}  # message_id -> list of chunks
+        pending_compact = None  # compact_boundary data awaiting summary
 
         for data in raw_lines:
             msg_type = data.get("type")
+
+            if msg_type == "system" and data.get("subtype") == "compact_boundary":
+                messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+                pending_assistant_chunks = {}
+                pending_compact = {
+                    "data": data,
+                    "messages_before": len(messages),
+                }
+                continue
 
             if msg_type == "assistant":
                 # Group by message.id for streaming chunks
@@ -85,11 +95,29 @@ class ClaudeParser:
                 messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
                 pending_assistant_chunks = {}
 
+                # Check if this user message is a compaction summary
+                if pending_compact is not None:
+                    summary_text = self._extract_user_text(data)
+                    if summary_text.startswith("This session is being continued"):
+                        messages.append(self._build_compacted_message(
+                            pending_compact, summary_text, data
+                        ))
+                        pending_compact = None
+                        continue
+                    # Not a summary — emit compacted marker without summary,
+                    # then process this user message normally
+                    messages.append(self._build_compacted_message(
+                        pending_compact, "", data
+                    ))
+                    pending_compact = None
+
                 msg = self._parse_user_message(data)
                 if msg:
                     messages.append(msg)
 
-        # Flush remaining assistant chunks
+        # Flush remaining
+        if pending_compact is not None:
+            messages.append(self._build_compacted_message(pending_compact, "", raw_lines[-1] if raw_lines else {}))
         messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
 
         return messages
@@ -190,6 +218,59 @@ class ClaudeParser:
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens
         )
+
+    def _extract_user_text(self, data: dict) -> str:
+        """Extract plain text from a user-type JSONL entry."""
+        message = data.get("message", {})
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    parts.append(block)
+            return "\n".join(parts)
+        return str(content)
+
+    def _build_compacted_message(self, compact_info: dict, summary: str, context_data: dict) -> Message:
+        """Create a unified compacted Message from compact_boundary + optional summary."""
+        boundary = compact_info["data"]
+        metadata = boundary.get("compactMetadata") or {}
+        pre_tokens = metadata.get("preTokens") or 0
+        trigger = metadata.get("trigger") or "auto"
+        messages_before = compact_info["messages_before"]
+
+        header = self._format_compact_header(pre_tokens, trigger, messages_before)
+        content = f"{header}\n\n{summary}" if summary else header
+
+        return Message(
+            role="system",
+            content=content,
+            uuid=boundary.get("uuid", ""),
+            timestamp=self._parse_timestamp(boundary.get("timestamp")),
+            session_id=boundary.get("sessionId") or context_data.get("sessionId", ""),
+            project_path=boundary.get("cwd") or context_data.get("cwd", ""),
+            message_type="compacted"
+        )
+
+    @staticmethod
+    def _format_compact_header(pre_tokens: int, trigger: str, messages_before: int) -> str:
+        """Build the short header line for a compaction event."""
+        if pre_tokens >= 1_000_000:
+            tokens_str = f"{pre_tokens / 1_000_000:.1f}M"
+        elif pre_tokens >= 1_000:
+            tokens_str = f"{pre_tokens / 1_000:.0f}K"
+        else:
+            tokens_str = str(pre_tokens)
+
+        parts = [f"Compacted at {tokens_str} tokens"]
+        parts.append(trigger)
+        if messages_before > 0:
+            parts.append(f"{messages_before} messages hidden")
+        return " · ".join(parts)
 
     def _parse_message(self, data: dict) -> Optional[Message]:
         """Parse a single message from JSONL"""
