@@ -189,6 +189,21 @@ function renderMessages(messages) {
                     const escapedSummary = escapeHtml(summary);
                     contentHtml += `<details class="compact-summary"><summary><i class="bi bi-file-text"></i> Summary</summary><div class="compact-summary-body"><span class="compact-raw-toggle" onclick="toggleSummaryRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-summary-formatted">${formatContent(summary)}</div><pre class="compact-summary-content" style="display:none">${escapedSummary}</pre></div></details>`;
                 }
+                if (msg.hidden_messages && msg.hidden_messages.length > 0) {
+                    contentHtml += `<details class="compact-hidden-messages"><summary><i class="bi bi-chat-square-text"></i> ${msg.hidden_messages.length} hidden messages</summary><div class="compact-hidden-body"><span class="compact-raw-toggle" onclick="toggleHiddenRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-hidden-formatted">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><span class="compact-hidden-text">${formatContent(hm.content)}</span></div>`;
+                    }
+                    contentHtml += `</div><div class="compact-hidden-raw" style="display:none">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><pre class="compact-hidden-text">${escapeHtml(hm.content)}</pre></div>`;
+                    }
+                    contentHtml += `</div></div></details>`;
+                }
                 contentHtml += `</div>`;
             } else {
                 contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
@@ -226,6 +241,9 @@ function formatContent(content) {
     // Basic markdown-like formatting
     let formatted = escapeHtml(content);
 
+    // Strip XML-like prompt tags (after escaping: &lt;tag&gt; and &lt;/tag&gt;)
+    formatted = formatted.replace(/&lt;\/?[a-zA-Z_][\w_-]*(?:\s[^&]*)? *&gt;\s*/g, '');
+
     // Code blocks
     formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
         return `<pre class="code-block"><code>${code.trim()}</code></pre>`;
@@ -236,6 +254,15 @@ function formatContent(content) {
 
     // Bold
     formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Headers (must be at line start, process before line breaks)
+    formatted = formatted.replace(/(^|\n)(#{1,4}) (.+)/g, (match, pre, hashes, text) => {
+        const level = hashes.length;
+        return `${pre}<strong style="font-size:${1.2 - level * 0.1}em">${text}</strong>`;
+    });
+
+    // Horizontal rules
+    formatted = formatted.replace(/(^|\n)---+(\n|$)/g, '$1<hr>$2');
 
     // Line breaks
     formatted = formatted.replace(/\n/g, '<br>');
@@ -497,6 +524,21 @@ function toggleSummaryRaw(btn) {
     const details = btn.closest('.compact-summary');
     const formatted = details.querySelector('.compact-summary-formatted');
     const raw = details.querySelector('.compact-summary-content');
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        formatted.style.display = 'none';
+        btn.textContent = 'md';
+    } else {
+        raw.style.display = 'none';
+        formatted.style.display = '';
+        btn.textContent = 'raw';
+    }
+}
+
+function toggleHiddenRaw(btn) {
+    const body = btn.closest('.compact-hidden-body');
+    const formatted = body.querySelector('.compact-hidden-formatted');
+    const raw = body.querySelector('.compact-hidden-raw');
     if (raw.style.display === 'none') {
         raw.style.display = '';
         formatted.style.display = 'none';

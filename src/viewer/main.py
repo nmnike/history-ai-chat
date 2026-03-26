@@ -86,7 +86,8 @@ def message_to_dict(msg: Message) -> dict:
         "input_tokens": msg.input_tokens,
         "output_tokens": msg.output_tokens,
         "cache_read_tokens": msg.cache_read_tokens,
-        "cache_creation_tokens": msg.cache_creation_tokens
+        "cache_creation_tokens": msg.cache_creation_tokens,
+        "hidden_messages": msg.hidden_messages
     }
 
 

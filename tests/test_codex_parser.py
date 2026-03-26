@@ -237,3 +237,109 @@ def test_parse_compacted_event(tmp_path):
     assert messages[1].message_type == "compacted"
     assert "Compacted" in messages[1].content
     assert "2 messages hidden" in messages[1].content
+    # Two different roles → breakdown shown
+    assert "1 user" in messages[1].content
+    assert "1 assistant" in messages[1].content
+
+
+def test_compacted_with_token_stats(tmp_path):
+    """Token count before/after compaction should appear in the header."""
+    session_file = tmp_path / "rollout-tokens-compact.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:00Z",
+            "payload": {
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Answer"}]
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 228344,
+                        "output_tokens": 851
+                    }
+                }
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 10077
+                    }
+                }
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "compacted",
+            "timestamp": "2026-03-17T10:01:00Z",
+            "payload": {
+                "message": "",
+                "replacement_history": [
+                    {"type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "Q1"}]},
+                    {"type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "Q2"}]},
+                    {"type": "message", "role": "developer",
+                     "content": [{"type": "input_text", "text": "System"}]},
+                ]
+            }
+        }) + "\n"
+    )
+
+    parser = CodexParser(sessions_path=str(tmp_path))
+    messages, _ = parser.parse_session(session_file)
+
+    compacted = messages[1]
+    assert compacted.message_type == "compacted"
+    assert "228K → 10K tokens" in compacted.content
+    assert "3 messages hidden" in compacted.content
+    assert "2 user" in compacted.content
+    assert "1 system" in compacted.content
+    # hidden_messages extracted from replacement_history
+    assert compacted.hidden_messages is not None
+    assert len(compacted.hidden_messages) == 3
+    assert compacted.hidden_messages[0]["role"] == "user"
+    assert compacted.hidden_messages[2]["role"] == "system"  # developer → system
+
+
+def test_compacted_single_role_no_breakdown(tmp_path):
+    """When all compacted messages are from one role, no breakdown shown."""
+    session_file = tmp_path / "rollout-single-role.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "compacted",
+            "timestamp": "2026-03-17T10:00:00Z",
+            "payload": {
+                "message": "",
+                "replacement_history": [
+                    {"type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "Q"}]},
+                    {"type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "Q2"}]},
+                ]
+            }
+        }) + "\n"
+    )
+
+    parser = CodexParser(sessions_path=str(tmp_path))
+    messages, _ = parser.parse_session(session_file)
+
+    assert "2 messages hidden" in messages[0].content
+    assert "(" not in messages[0].content
+
+
+def test_format_tokens():
+    """Token formatting helper."""
+    assert CodexParser._format_tokens(500) == "500"
+    assert CodexParser._format_tokens(228344) == "228K"
+    assert CodexParser._format_tokens(1_500_000) == "1.5M"

@@ -244,6 +244,65 @@ body {
     white-space: pre-wrap;
 }
 
+.compact-hidden-messages {
+    margin-top: 0.4rem;
+}
+
+.compact-hidden-messages summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.compact-hidden-body {
+    position: relative;
+    margin-top: 0.25rem;
+}
+
+.compact-hidden-formatted,
+.compact-hidden-raw {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.compact-hidden-msg {
+    font-size: 0.82rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    border-left: 3px solid var(--compacted-border);
+}
+
+.compact-hidden-msg.compact-hidden-user {
+    border-left-color: var(--bs-primary, #0d6efd);
+}
+
+.compact-hidden-msg.compact-hidden-assistant {
+    border-left-color: var(--bs-secondary, #6c757d);
+}
+
+.compact-hidden-msg.compact-hidden-system {
+    border-left-color: var(--bs-warning, #ffc107);
+}
+
+.compact-hidden-role {
+    font-weight: 600;
+    font-size: 0.75rem;
+    margin-right: 0.4rem;
+    opacity: 0.7;
+}
+
+.compact-hidden-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+pre.compact-hidden-text {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
 .system-message {
     background-color: var(--system-bg, rgba(255, 193, 7, 0.1));
     border-left: 3px solid var(--system-border, #ffc107);
