@@ -303,6 +303,12 @@ pre.compact-hidden-text {
     font-size: 0.82rem;
 }
 
+.md-li {
+    display: block;
+    padding-left: 1em;
+    text-indent: -0.6em;
+}
+
 .system-message {
     background-color: var(--system-bg, rgba(255, 193, 7, 0.1));
     border-left: 3px solid var(--system-border, #ffc107);
