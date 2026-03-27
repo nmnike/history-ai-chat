@@ -218,7 +218,7 @@ def test_parse_custom_title(tmp_path):
 
 
 def test_parse_assistant_model(tmp_path):
-    """Test that model is extracted from assistant messages, synthetic filtered"""
+    """Test that model is extracted from assistant messages, synthetic filtered, alias applied"""
     import json
     session_file = tmp_path / "session.jsonl"
     session_file.write_text(
@@ -237,8 +237,71 @@ def test_parse_assistant_model(tmp_path):
     parser = ClaudeParser()
     messages, metadata = parser.parse_session(session_file)
 
-    assert metadata["model"] == "claude-opus-4-6"
+    assert metadata["model"] == "Opus 4.6"
     assistant_msgs = [m for m in messages if m.role == "assistant" and m.model]
-    assert any(m.model == "claude-opus-4-6" for m in assistant_msgs)
+    assert any(m.model == "Opus 4.6" for m in assistant_msgs)
     # synthetic should be filtered
     assert not any(m.model == "<synthetic>" for m in messages)
+
+
+def test_parse_effort_from_model_command(tmp_path):
+    """Test that effort is extracted from /model command output in user events"""
+    session_file = tmp_path / "session.jsonl"
+    # Real format: content is a string with <local-command-stdout> tag and ANSI codes
+    model_command_event = {
+        "type": "user",
+        "uuid": "u2",
+        "timestamp": "2026-03-27T10:00:00Z",
+        "sessionId": "s1",
+        "cwd": "/p",
+        "message": {
+            "role": "user",
+            "content": "<local-command-stdout>Set model to \x1b[1mSonnet 4.6 (default)\x1b[22m with high effort</local-command-stdout>"
+        }
+    }
+    assistant_event = {
+        "type": "assistant",
+        "uuid": "a1",
+        "timestamp": "2026-03-27T10:00:01Z",
+        "sessionId": "s1",
+        "cwd": "/p",
+        "message": {
+            "id": "msg1",
+            "role": "assistant",
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "Response after effort set"}],
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }
+    }
+    session_file.write_text(
+        json.dumps(model_command_event) + "\n" +
+        json.dumps(assistant_event) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["effort"] == "high"
+    assistant_msgs = [m for m in messages if m.role == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0].effort == "high"
+
+
+def test_parse_effort_none_when_no_model_command(tmp_path):
+    """Test that effort is None when no /model command is present"""
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "assistant", "uuid": "a1", "timestamp": "2026-03-27T10:00:00Z",
+            "sessionId": "s1", "cwd": "/p",
+            "message": {"id": "msg1", "role": "assistant", "model": "claude-sonnet-4-6",
+                        "content": [{"type": "text", "text": "Hi"}],
+                        "usage": {"input_tokens": 5, "output_tokens": 3}}
+        }) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["effort"] is None
+    assert all(m.effort is None for m in messages if m.role == "assistant")

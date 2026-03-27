@@ -1,10 +1,21 @@
 # src/viewer/parsers/claude.py
 """Parser for Claude Code conversation history"""
 import json
+import re
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime
+
+
+def model_alias(model: str) -> Optional[str]:
+    """Convert full model ID to short alias, e.g. 'claude-sonnet-4-6' -> 'Sonnet 4.6'"""
+    if not model:
+        return None
+    m = re.match(r"claude-(\w+)-(\d+)[-.](\d+)", model, re.IGNORECASE)
+    if m:
+        return f"{m.group(1).capitalize()} {m.group(2)}.{m.group(3)}"
+    return model
 
 
 @dataclass
@@ -39,6 +50,7 @@ class Session:
     created_at: Optional[datetime] = None
     model: Optional[str] = None
     effort: Optional[str] = None
+    custom_title: Optional[str] = None
 
 
 class ClaudeParser:
@@ -54,7 +66,7 @@ class ClaudeParser:
         Returns (messages, metadata) where metadata contains session-level info.
         """
         raw_lines = []
-        metadata = {"custom_title": None, "models": set()}
+        metadata = {"custom_title": None, "models": set(), "efforts": set()}
 
         with open(session_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -69,6 +81,7 @@ class ClaudeParser:
         # Process and merge streaming chunks
         messages = []
         pending_assistant_chunks = {}  # message_id -> list of chunks
+        current_effort = None  # tracks latest effort from /model commands
 
         for data in raw_lines:
             msg_type = data.get("type")
@@ -83,7 +96,7 @@ class ClaudeParser:
                 msg_id = message.get("id", "")
                 model = message.get("model")
                 if model and model != "<synthetic>":
-                    metadata["models"].add(model)
+                    metadata["models"].add(model_alias(model))
 
                 if msg_id:
                     if msg_id not in pending_assistant_chunks:
@@ -92,21 +105,36 @@ class ClaudeParser:
                 else:
                     msg = self._parse_assistant_message(data)
                     if msg:
+                        msg.effort = current_effort
                         messages.append(msg)
 
             elif msg_type == "user":
-                # Flush any pending assistant chunks before user message
-                messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+                # Flush pending assistant chunks with the current (old) effort
+                flushed = self._flush_assistant_chunks(pending_assistant_chunks)
+                for msg in flushed:
+                    msg.effort = current_effort
+                messages.extend(flushed)
                 pending_assistant_chunks = {}
+
+                # Update effort from /model command — applies to subsequent assistant messages
+                effort_from_cmd = self._extract_effort_from_user_event(data)
+                if effort_from_cmd is not None:
+                    current_effort = effort_from_cmd
+                    if current_effort:
+                        metadata["efforts"].add(current_effort)
 
                 msg = self._parse_user_message(data)
                 if msg:
                     messages.append(msg)
 
         # Flush remaining assistant chunks
-        messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+        flushed = self._flush_assistant_chunks(pending_assistant_chunks)
+        for msg in flushed:
+            msg.effort = current_effort
+        messages.extend(flushed)
 
         metadata["model"] = ", ".join(sorted(metadata["models"])) or None
+        metadata["effort"] = ", ".join(sorted(metadata["efforts"])) or None
         return messages, metadata
 
     def _flush_assistant_chunks(self, chunks: dict) -> list[Message]:
@@ -169,7 +197,7 @@ class ClaudeParser:
 
             model = message.get("model")
             if model and model != "<synthetic>":
-                msg_model = model
+                msg_model = model_alias(model)
 
             # Merge content blocks
             if isinstance(content_blocks, list):
@@ -286,7 +314,7 @@ class ClaudeParser:
         cache_creation_tokens = usage.get("cache_creation_input_tokens", 0) or 0
 
         raw_model = message.get("model")
-        msg_model = raw_model if raw_model and raw_model != "<synthetic>" else None
+        msg_model = model_alias(raw_model) if raw_model and raw_model != "<synthetic>" else None
 
         if not isinstance(content_blocks, list):
             return Message(
@@ -340,6 +368,30 @@ class ClaudeParser:
             cache_creation_tokens=cache_creation_tokens,
             model=msg_model
         )
+
+    def _extract_effort_from_user_event(self, data: dict) -> Optional[str]:
+        """Extract effort from /model command output in user events.
+
+        Content format: "<local-command-stdout>Set model to X with Y effort</local-command-stdout>"
+        Returns effort string (e.g. "high") if found, "" if model set without effort,
+        or None if this event has no /model command output.
+        """
+        content = data.get("message", {}).get("content", "")
+        if not isinstance(content, str):
+            return None
+
+        # Content must be exactly the tag (no surrounding text)
+        tag_match = re.fullmatch(r"\s*<local-command-stdout>(.*?)</local-command-stdout>\s*", content, re.DOTALL)
+        if not tag_match:
+            return None
+
+        text = re.sub(r"\x1b\[[0-9;]*m", "", tag_match.group(1)).strip()
+        m = re.search(r"Set model to .+? with (\w+) effort", text)
+        if m:
+            return m.group(1)
+        if re.search(r"Set model to ", text):
+            return ""
+        return None
 
     def _parse_timestamp(self, ts) -> Optional[datetime]:
         """Parse timestamp from various formats"""
@@ -400,7 +452,9 @@ class ClaudeParser:
                     messages=messages,
                     first_message=metadata.get("custom_title") or default_preview,
                     created_at=messages[0].timestamp if messages else None,
-                    model=metadata.get("model")
+                    model=metadata.get("model"),
+                    effort=metadata.get("effort"),
+                    custom_title=metadata.get("custom_title")
                 )
                 sessions.append(session)
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
-from .claude import Message, Session
+from .claude import Message, Session, model_alias
 
 
 class CodexParser:
@@ -44,7 +44,7 @@ class CodexParser:
                 # Track current model/effort from each turn_context
                 if data.get("type") == "turn_context":
                     payload = data.get("payload", {})
-                    current_model = payload.get("model")
+                    current_model = model_alias(payload.get("model"))
                     current_effort = payload.get("effort")
                     if current_model:
                         metadata["models"].add(current_model)
