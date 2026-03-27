@@ -68,7 +68,8 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "cache_read_tokens": cache_read_tokens,
         "cache_creation_tokens": cache_creation_tokens,
         "model": session.model,
-        "effort": session.effort
+        "effort": session.effort,
+        "custom_title": session.custom_title
     }
 
 
