@@ -189,3 +189,98 @@ def test_token_parsing(tmp_path):
     assert messages[1].input_tokens == 1000
     assert messages[1].output_tokens == 50
     assert messages[1].cache_read_tokens == 200
+
+
+def test_turn_context_model_effort(tmp_path):
+    """Test that model and effort are extracted from turn_context events"""
+    session_file = tmp_path / "rollout-model.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "turn-1",
+                "model": "o3",
+                "effort": "medium",
+                "cwd": "/project"
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "turn-2",
+                "model": "o3-mini",
+                "effort": "high",
+                "cwd": "/project"
+            }
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:00Z",
+            "payload": {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}]
+            }
+        }) + "\n"
+    )
+
+    parser = CodexParser(sessions_path=str(tmp_path))
+    messages, metadata = parser.parse_session(session_file)
+
+    # Both models collected; sorted join
+    assert metadata["model"] == "o3, o3-mini"
+    assert metadata["effort"] == "high, medium"
+
+    # Assistant message gets model from its preceding turn_context
+    # (no assistant message in this file, but verify session-level)
+    sessions = parser.get_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].model == "o3, o3-mini"
+    assert sessions[0].effort == "high, medium"
+
+
+def test_per_message_model_effort(tmp_path):
+    """Test that each assistant message gets model/effort from preceding turn_context"""
+    session_file = tmp_path / "rollout-per-msg.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "turn_context",
+            "payload": {"turn_id": "t1", "model": "o3", "effort": "medium"}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:00Z",
+            "payload": {"role": "user", "content": [{"type": "input_text", "text": "Q1"}]}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:01Z",
+            "payload": {"role": "assistant", "content": [{"type": "output_text", "text": "A1"}]}
+        }) + "\n" +
+        json.dumps({
+            "type": "turn_context",
+            "payload": {"turn_id": "t2", "model": "o3-mini", "effort": "high"}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:02Z",
+            "payload": {"role": "user", "content": [{"type": "input_text", "text": "Q2"}]}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-03-17T10:00:03Z",
+            "payload": {"role": "assistant", "content": [{"type": "output_text", "text": "A2"}]}
+        }) + "\n"
+    )
+
+    parser = CodexParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assistant_msgs = [m for m in messages if m.role == "assistant"]
+    assert len(assistant_msgs) == 2
+    assert assistant_msgs[0].model == "o3"
+    assert assistant_msgs[0].effort == "medium"
+    assert assistant_msgs[1].model == "o3-mini"
+    assert assistant_msgs[1].effort == "high"
+
+    # Session-level: both models
+    assert metadata["model"] == "o3, o3-mini"

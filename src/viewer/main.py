@@ -66,7 +66,9 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read_tokens,
-        "cache_creation_tokens": cache_creation_tokens
+        "cache_creation_tokens": cache_creation_tokens,
+        "model": session.model,
+        "effort": session.effort
     }
 
 
@@ -86,7 +88,9 @@ def message_to_dict(msg: Message) -> dict:
         "input_tokens": msg.input_tokens,
         "output_tokens": msg.output_tokens,
         "cache_read_tokens": msg.cache_read_tokens,
-        "cache_creation_tokens": msg.cache_creation_tokens
+        "cache_creation_tokens": msg.cache_creation_tokens,
+        "model": msg.model,
+        "effort": msg.effort
     }
 
 
@@ -95,7 +99,7 @@ def message_to_dict(msg: Message) -> dict:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Dashboard page with overview of all projects"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/project/{project_id}", response_class=HTMLResponse)
@@ -107,8 +111,8 @@ async def project_page(
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
-        "project.html",
-        {"request": request, "project_id": project_id, "platform": platform, "date_filter": date}
+        request, "project.html",
+        context={"project_id": project_id, "platform": platform, "date_filter": date}
     )
 
 
@@ -121,13 +125,8 @@ async def conversation_page(
 ):
     """Conversation page showing full session"""
     return templates.TemplateResponse(
-        "conversation.html",
-        {
-            "request": request,
-            "session_id": session_id,
-            "project_id": project_id,
-            "platform": platform
-        }
+        request, "conversation.html",
+        context={"session_id": session_id, "project_id": project_id, "platform": platform}
     )
 
 
