@@ -17,7 +17,7 @@ def test_parse_user_message(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].role == "user"
@@ -44,7 +44,7 @@ def test_parse_user_message_with_list_content(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert "Check this file" in messages[0].content
@@ -69,7 +69,7 @@ def test_parse_assistant_message(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].role == "assistant"
@@ -96,7 +96,7 @@ def test_parse_assistant_message_with_thinking(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].thinking_text == "Let me think about this..."
@@ -123,7 +123,7 @@ def test_parse_assistant_message_with_tool_use(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].message_type == "tool_use"
@@ -163,7 +163,7 @@ def test_parse_multiple_messages(tmp_path):
     session_file.write_text("\n".join(lines) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 3
     assert messages[0].role == "user"
@@ -177,7 +177,7 @@ def test_parse_empty_file(tmp_path):
     session_file.write_text("")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 0
 
@@ -197,3 +197,48 @@ def test_parse_timestamp_various_formats(tmp_path):
     # None
     ts3 = parser._parse_timestamp(None)
     assert ts3 is None
+
+
+def test_parse_custom_title(tmp_path):
+    """Test that custom-title is extracted into session metadata"""
+    import json
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({"type": "user", "uuid": "u1", "timestamp": "2026-03-17T10:00:00Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"role": "user", "content": "Hello"}}) + "\n" +
+        json.dumps({"type": "custom-title", "customTitle": "My Session",
+                    "sessionId": "s1"}) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["custom_title"] == "My Session"
+
+
+def test_parse_assistant_model(tmp_path):
+    """Test that model is extracted from assistant messages, synthetic filtered"""
+    import json
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({"type": "assistant", "uuid": "a1", "timestamp": "2026-03-17T10:00:00Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"id": "msg1", "role": "assistant", "model": "claude-opus-4-6",
+                                "content": [{"type": "text", "text": "Hi"}],
+                                "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n" +
+        json.dumps({"type": "assistant", "uuid": "a2", "timestamp": "2026-03-17T10:00:01Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"id": "msg2", "role": "assistant", "model": "<synthetic>",
+                                "content": [{"type": "text", "text": "Think"}],
+                                "usage": {"input_tokens": 0, "output_tokens": 0}}}) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["model"] == "claude-opus-4-6"
+    assistant_msgs = [m for m in messages if m.role == "assistant" and m.model]
+    assert any(m.model == "claude-opus-4-6" for m in assistant_msgs)
+    # synthetic should be filtered
+    assert not any(m.model == "<synthetic>" for m in messages)

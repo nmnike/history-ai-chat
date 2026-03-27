@@ -29,7 +29,7 @@ def test_parse_assistant_message_with_tokens(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser(str(tmp_path))
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].input_tokens == 1000
@@ -54,7 +54,7 @@ def test_parse_message_without_usage(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser(str(tmp_path))
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].input_tokens == 0
@@ -82,7 +82,7 @@ def test_parse_message_with_missing_usage_fields(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser(str(tmp_path))
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert messages[0].input_tokens == 1000
     assert messages[0].output_tokens == 50
@@ -110,7 +110,7 @@ def test_parse_assistant_message_with_tool_use_and_tokens(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser(str(tmp_path))
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].input_tokens == 500

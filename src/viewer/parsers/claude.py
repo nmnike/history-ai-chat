@@ -48,9 +48,13 @@ class ClaudeParser:
         import os
         self.projects_path = Path(projects_path or os.path.expanduser("~/.claude/projects"))
 
-    def parse_session(self, session_file: Path) -> list[Message]:
-        """Parse a single session JSONL file"""
+    def parse_session(self, session_file: Path) -> tuple[list[Message], dict]:
+        """Parse a single session JSONL file.
+
+        Returns (messages, metadata) where metadata contains session-level info.
+        """
         raw_lines = []
+        metadata = {"custom_title": None, "models": set()}
 
         with open(session_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -69,17 +73,23 @@ class ClaudeParser:
         for data in raw_lines:
             msg_type = data.get("type")
 
+            if msg_type == "custom-title":
+                metadata["custom_title"] = data.get("customTitle")
+                continue
+
             if msg_type == "assistant":
                 # Group by message.id for streaming chunks
                 message = data.get("message", {})
                 msg_id = message.get("id", "")
+                model = message.get("model")
+                if model and model != "<synthetic>":
+                    metadata["models"].add(model)
 
                 if msg_id:
                     if msg_id not in pending_assistant_chunks:
                         pending_assistant_chunks[msg_id] = []
                     pending_assistant_chunks[msg_id].append(data)
                 else:
-                    # No message.id, process directly
                     msg = self._parse_assistant_message(data)
                     if msg:
                         messages.append(msg)
@@ -96,7 +106,8 @@ class ClaudeParser:
         # Flush remaining assistant chunks
         messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
 
-        return messages
+        metadata["model"] = ", ".join(sorted(metadata["models"])) or None
+        return messages, metadata
 
     def _flush_assistant_chunks(self, chunks: dict) -> list[Message]:
         """Merge streaming chunks into single messages"""
@@ -135,6 +146,8 @@ class ClaudeParser:
         timestamp = None
         uuid = ""
 
+        msg_model = None
+
         for chunk in chunks:
             message = chunk.get("message", {})
             content_blocks = message.get("content", [])
@@ -153,6 +166,10 @@ class ClaudeParser:
                 project_path = chunk.get("cwd", "")
                 timestamp = self._parse_timestamp(chunk.get("timestamp"))
                 uuid = chunk.get("uuid", "")
+
+            model = message.get("model")
+            if model and model != "<synthetic>":
+                msg_model = model
 
             # Merge content blocks
             if isinstance(content_blocks, list):
@@ -192,7 +209,8 @@ class ClaudeParser:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens
+            cache_creation_tokens=cache_creation_tokens,
+            model=msg_model
         )
 
     def _parse_message(self, data: dict) -> Optional[Message]:
@@ -267,6 +285,9 @@ class ClaudeParser:
         cache_read_tokens = usage.get("cache_read_input_tokens", 0) or 0
         cache_creation_tokens = usage.get("cache_creation_input_tokens", 0) or 0
 
+        raw_model = message.get("model")
+        msg_model = raw_model if raw_model and raw_model != "<synthetic>" else None
+
         if not isinstance(content_blocks, list):
             return Message(
                 role="assistant",
@@ -316,7 +337,8 @@ class ClaudeParser:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens
+            cache_creation_tokens=cache_creation_tokens,
+            model=msg_model
         )
 
     def _parse_timestamp(self, ts) -> Optional[datetime]:
@@ -367,15 +389,18 @@ class ClaudeParser:
             if session_file.name.startswith("agent-"):
                 continue
 
-            messages = self.parse_session(session_file)
+            messages, metadata = self.parse_session(session_file)
             if messages:
+                first_user = next((m for m in messages if m.role == "user"), None)
+                default_preview = first_user.content[:100] if first_user else (messages[0].content[:100] if messages else None)
                 session = Session(
                     id=session_file.stem,
                     project_path=str(project_path),
                     project_name=project_id,
                     messages=messages,
-                    first_message=messages[0].content[:100] if messages else None,
-                    created_at=messages[0].timestamp if messages else None
+                    first_message=metadata.get("custom_title") or default_preview,
+                    created_at=messages[0].timestamp if messages else None,
+                    model=metadata.get("model")
                 )
                 sessions.append(session)
 
