@@ -66,7 +66,10 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read_tokens,
-        "cache_creation_tokens": cache_creation_tokens
+        "cache_creation_tokens": cache_creation_tokens,
+        "model": session.model,
+        "effort": session.effort,
+        "custom_title": session.custom_title
     }
 
 
@@ -87,7 +90,9 @@ def message_to_dict(msg: Message) -> dict:
         "output_tokens": msg.output_tokens,
         "cache_read_tokens": msg.cache_read_tokens,
         "cache_creation_tokens": msg.cache_creation_tokens,
-        "hidden_messages": msg.hidden_messages
+        "hidden_messages": msg.hidden_messages,
+        "model": msg.model,
+        "effort": msg.effort
     }
 
 
@@ -108,8 +113,7 @@ async def project_page(
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
-        request,
-        "project.html",
+        request, "project.html",
         {"project_id": project_id, "platform": platform, "date_filter": date}
     )
 
@@ -123,8 +127,7 @@ async def conversation_page(
 ):
     """Conversation page showing full session"""
     return templates.TemplateResponse(
-        request,
-        "conversation.html",
+        request, "conversation.html",
         {
             "session_id": session_id,
             "project_id": project_id,

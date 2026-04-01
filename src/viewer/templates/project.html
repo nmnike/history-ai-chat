@@ -131,6 +131,12 @@ function loadSessions() {
                 const tokensBadge = (s.input_tokens || s.output_tokens)
                     ? `<span class="badge bg-success">${formatTokens(s.input_tokens || 0)}/${formatTokens(s.output_tokens || 0)}</span>`
                     : '';
+                const modelBadge = s.model
+                    ? `<span class="badge bg-dark ms-1" title="Model"><i class="bi bi-cpu"></i> ${escapeHtml(s.model)}</span>`
+                    : '';
+                const effortBadge = s.effort
+                    ? `<span class="badge bg-secondary ms-1">${escapeHtml(s.effort)}</span>`
+                    : '';
                 return `
                     <a href="/conversation/${encodeURIComponent(s.id)}?project_id=${encodeURIComponent(projectId)}&platform=${platform}"
                        class="list-group-item list-group-item-action">
@@ -140,6 +146,7 @@ function loadSessions() {
                                 <small class="text-muted">${date}</small>
                             </div>
                             <div class="text-end">
+                                ${modelBadge}${effortBadge}
                                 ${tokensBadge}
                                 <span class="badge bg-secondary rounded-pill ms-1">${s.message_count} msgs</span>
                             </div>

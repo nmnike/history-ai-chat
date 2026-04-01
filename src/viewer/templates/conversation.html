@@ -25,8 +25,9 @@
     <div class="col-md-8">
         <h5 class="mb-2">
             <i class="bi bi-chat-dots"></i>
-            <span id="session-id">{{ session_id }}</span>
+            <span id="session-title">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+            <span id="session-meta-badges"></span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
         </h5>
         <div id="session-stats" class="d-flex flex-wrap gap-1"></div>
@@ -109,7 +110,11 @@ function loadConversation() {
             const session = data.session || {};
             const messages = data.messages || [];
 
-            // Update session info
+            // Update session title and date
+            if (session.custom_title) {
+                document.getElementById('session-title').innerHTML =
+                    '<strong>' + escapeHtml(session.custom_title) + '</strong> <span class="text-muted fw-normal" style="font-size: 0.75em;">' + escapeHtml(sessionId) + '</span>';
+            }
             if (session.created_at) {
                 document.getElementById('session-date').textContent =
                     new Date(session.created_at).toLocaleString();
@@ -119,6 +124,19 @@ function loadConversation() {
             const badgeEl = document.getElementById('platform-badge');
             if (platform === 'claude') {
                 badgeEl.className = 'badge bg-warning text-dark';
+            }
+
+            // Show model/effort badges for Codex sessions
+            const metaBadgesEl = document.getElementById('session-meta-badges');
+            if (metaBadgesEl) {
+                let metaHtml = '';
+                if (session.model) {
+                    metaHtml += `<span class="badge bg-dark ms-1" title="Model"><i class="bi bi-cpu"></i> ${escapeHtml(session.model)}</span>`;
+                }
+                if (session.effort) {
+                    metaHtml += `<span class="badge bg-secondary ms-1" title="Effort">${escapeHtml(session.effort)}</span>`;
+                }
+                metaBadgesEl.innerHTML = metaHtml;
             }
 
             allMessages = messages;
@@ -228,6 +246,7 @@ function renderMessages(messages) {
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                    ${msg.model ? `<span class="badge bg-dark ms-1" style="font-size: 0.65rem;" title="Model">${escapeHtml(msg.model)}${msg.effort ? ' · ' + escapeHtml(msg.effort) : ''}</span>` : ''}
                     ${!isUser && (msg.input_tokens || msg.output_tokens) ? `<span class="badge bg-success ms-1" style="font-size: 0.65rem;">${formatTokens(msg.input_tokens || 0)}/${formatTokens(msg.output_tokens || 0)}</span>` : ''}
                     <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
                 </div>

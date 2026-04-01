@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
-from .claude import Message, Session
+from .claude import Message, Session, model_alias
 
 
 class CodexParser:
@@ -20,10 +20,12 @@ class CodexParser:
         Returns tuple of (messages, metadata) where metadata contains session info.
         """
         messages = []
-        metadata = {"cwd": None, "cli_version": None}
+        metadata = {"cwd": None, "cli_version": None, "models": set(), "efforts": set()}
         last_assistant_idx = None  # Track last assistant message for token attribution
         last_input_tokens = 0  # Track context size for compaction headers
         last_zero_total_tokens = 0  # Post-compaction context size
+        current_model = None
+        current_effort = None
 
         with open(session_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -39,6 +41,17 @@ class CodexParser:
                     payload = data.get("payload", {})
                     metadata["cwd"] = payload.get("cwd")
                     metadata["cli_version"] = payload.get("cli_version")
+                    continue
+
+                # Track current model/effort from each turn_context
+                if data.get("type") == "turn_context":
+                    payload = data.get("payload", {})
+                    current_model = model_alias(payload.get("model"))
+                    current_effort = payload.get("effort")
+                    if current_model:
+                        metadata["models"].add(current_model)
+                    if current_effort:
+                        metadata["efforts"].add(current_effort)
                     continue
 
                 # Handle token count - attribute to last assistant message
@@ -62,10 +75,16 @@ class CodexParser:
 
                 msg = self._parse_message(data, session_file, metadata)
                 if msg:
-                    messages.append(msg)
-                    # Track assistant messages for token attribution
+                    # Attach current model/effort to assistant messages
                     if msg.role == "assistant":
-                        last_assistant_idx = len(messages) - 1
+                        msg.model = current_model
+                        msg.effort = current_effort
+                        last_assistant_idx = len(messages)
+                    messages.append(msg)
+
+        # Build session-level model/effort strings (sorted for determinism)
+        metadata["model"] = ", ".join(sorted(metadata["models"])) or None
+        metadata["effort"] = ", ".join(sorted(metadata["efforts"])) or None
 
         return messages, metadata
 
@@ -341,7 +360,9 @@ class CodexParser:
                     project_name=project_name,
                     messages=messages,
                     first_message=first_user_msg.content[:100] if first_user_msg else None,
-                    created_at=messages[0].timestamp if messages else None
+                    created_at=messages[0].timestamp if messages else None,
+                    model=metadata.get("model"),
+                    effort=metadata.get("effort")
                 )
                 sessions.append(session)
 
