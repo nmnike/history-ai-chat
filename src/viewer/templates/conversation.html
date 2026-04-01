@@ -145,12 +145,13 @@ function renderMessages(messages) {
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
-        const isSystem = msg.role === 'system';
+        const isCompacted = msg.message_type === 'compacted';
+        const isSystem = msg.role === 'system' && !isCompacted;
         const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
-        const msgClass = isUser ? 'user-message' : (isSystem ? 'system-message' : 'assistant-message');
-        const roleLabel = isUser ? 'You' : (isSystem ? 'System' : (isToolResult ? 'Tool Result' : 'Assistant'));
-        const roleBadge = isUser ? 'bg-primary' : (isSystem ? 'bg-warning text-dark' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary'));
-        const roleIcon = isUser ? '' : (isSystem ? '<i class="bi bi-gear"></i> ' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : ''));
+        const msgClass = isUser ? 'user-message' : (isCompacted ? 'compacted-message' : (isSystem ? 'system-message' : 'assistant-message'));
+        const roleLabel = isUser ? 'You' : (isCompacted ? 'Context compacted' : (isSystem ? 'System' : (isToolResult ? 'Tool Result' : 'Assistant')));
+        const roleBadge = isUser ? 'bg-primary' : (isCompacted ? 'bg-dark' : (isSystem ? 'bg-warning text-dark' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary')));
+        const roleIcon = isUser ? '' : (isCompacted ? '<i class="bi bi-arrows-collapse"></i> ' : (isSystem ? '<i class="bi bi-gear"></i> ' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : '')));
 
         // Track tool_name for tool_result association
         if (msg.tool_name) {
@@ -179,7 +180,34 @@ function renderMessages(messages) {
 
         // Main content
         if (msg.content) {
-            contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
+            if (isCompacted) {
+                const splitIdx = msg.content.indexOf('\n\n');
+                const header = splitIdx > -1 ? msg.content.substring(0, splitIdx) : msg.content;
+                const summary = splitIdx > -1 ? msg.content.substring(splitIdx + 2).trim() : '';
+                contentHtml += `<div class="message-content collapse-content">${escapeHtml(header)}`;
+                if (summary) {
+                    const escapedSummary = escapeHtml(summary);
+                    contentHtml += `<details class="compact-summary"><summary><i class="bi bi-file-text"></i> Summary</summary><div class="compact-summary-body"><span class="compact-raw-toggle" onclick="toggleSummaryRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-summary-formatted">${formatContent(summary)}</div><pre class="compact-summary-content" style="display:none">${escapedSummary}</pre></div></details>`;
+                }
+                if (msg.hidden_messages && msg.hidden_messages.length > 0) {
+                    contentHtml += `<details class="compact-hidden-messages"><summary><i class="bi bi-chat-square-text"></i> ${msg.hidden_messages.length} hidden messages</summary><div class="compact-hidden-body"><span class="compact-raw-toggle" onclick="toggleHiddenRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-hidden-formatted">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><span class="compact-hidden-text">${formatContent(stripPromptTags(hm.content))}</span></div>`;
+                    }
+                    contentHtml += `</div><div class="compact-hidden-raw" style="display:none">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><pre class="compact-hidden-text">${escapeHtml(hm.content)}</pre></div>`;
+                    }
+                    contentHtml += `</div></div></details>`;
+                }
+                contentHtml += `</div>`;
+            } else {
+                contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
+            }
         }
 
         // Tool use - collapsed by default
@@ -196,7 +224,7 @@ function renderMessages(messages) {
         }
 
         return `
-            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}">
+            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}" data-message-type="${msg.message_type || ''}">
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
@@ -209,17 +237,50 @@ function renderMessages(messages) {
     }).join('');
 }
 
+function stripPromptTags(text) {
+    return text.replace(/<\/?[a-zA-Z_][\w_-]*(?:\s[^>]*)? *>\s*/g, '');
+}
+
 function formatContent(content) {
-    // Basic markdown-like formatting
     let formatted = escapeHtml(content);
+
+    // Normalize line endings and collapse excessive blank lines
+    formatted = formatted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     // Code blocks
     formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
         return `<pre class="code-block"><code>${code.trim()}</code></pre>`;
     });
 
-    // Inline code
-    formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Inline code (use * not + to handle empty backtick pairs like ``)
+    formatted = formatted.replace(/`([^`]*)`/g, '<code class="inline-code">$1</code>');
+
+    // Bold
+    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Headers (at line start)
+    formatted = formatted.replace(/(^|\n)(#{1,4}) (.+)/g, (match, pre, hashes, text) => {
+        const level = hashes.length;
+        return `${pre}<strong style="font-size:${1.2 - level * 0.1}em">${text}</strong>`;
+    });
+
+    // Unordered lists (- item, with optional indentation)
+    formatted = formatted.replace(/(^|\n)( *)- (.+)/g, (match, pre, indent, text) => {
+        const level = Math.floor(indent.length / 2);
+        const pad = level > 0 ? ` style="margin-left:${level}em"` : '';
+        return `${pre}<span class="md-li"${pad}>• ${text}</span>`;
+    });
+
+    // Ordered lists (1. item, with optional indentation)
+    formatted = formatted.replace(/(^|\n)( *)(\d+)\. (.+)/g, (match, pre, indent, num, text) => {
+        const level = Math.floor(indent.length / 2);
+        const pad = level > 0 ? ` style="margin-left:${level}em"` : '';
+        return `${pre}<span class="md-li"${pad}>${num}. ${text}</span>`;
+    });
+
+    // Horizontal rules
+    formatted = formatted.replace(/(^|\n)---+(\n|$)/g, '$1<hr>$2');
 
     // Line breaks
     formatted = formatted.replace(/\n/g, '<br>');
@@ -354,6 +415,7 @@ function updateSessionStats(messages) {
     const stats = {
         user: 0,
         system: 0,
+        compacted: 0,
         assistant: 0,
         tools: {},
         tokens: {
@@ -365,7 +427,9 @@ function updateSessionStats(messages) {
     };
 
     messages.forEach(msg => {
-        if (msg.role === 'user') {
+        if (msg.message_type === 'compacted') {
+            stats.compacted++;
+        } else if (msg.role === 'user') {
             stats.user++;
         } else if (msg.role === 'system') {
             stats.system++;
@@ -388,6 +452,9 @@ function updateSessionStats(messages) {
     let html = `<span class="badge bg-primary me-1 stat-badge" data-filter="user" onclick="toggleFilter('user')"><i class="bi bi-person"></i> ${stats.user}</span>`;
     if (stats.system > 0) {
         html += `<span class="badge bg-warning text-dark me-1 stat-badge" data-filter="system" onclick="toggleFilter('system')"><i class="bi bi-gear"></i> ${stats.system}</span>`;
+    }
+    if (stats.compacted > 0) {
+        html += `<span class="badge bg-dark me-1 stat-badge" data-filter="compacted" onclick="toggleFilter('compacted')"><i class="bi bi-arrows-collapse"></i> ${stats.compacted}</span>`;
     }
     html += `<span class="badge bg-secondary me-1 stat-badge" data-filter="assistant" onclick="toggleFilter('assistant')"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
 
@@ -452,11 +519,14 @@ function toggleFilter(filter) {
         bubbles.forEach(b => {
             const tool = b.dataset.tool;
             const role = b.dataset.role;
+            const messageType = b.dataset.messageType;
 
             if (filter === 'user' && role === 'user') {
                 b.style.display = '';
-            } else if (filter === 'system' && role === 'system') {
+            } else if (filter === 'compacted' && messageType === 'compacted') {
                 b.style.display = '';
+            } else if (filter === 'system' && role === 'system') {
+                b.style.display = messageType === 'compacted' ? 'none' : '';
             } else if (filter === 'assistant' && role === 'assistant') {
                 b.style.display = '';
             } else if (tool === filter) {
@@ -465,6 +535,36 @@ function toggleFilter(filter) {
                 b.style.display = 'none';
             }
         });
+    }
+}
+
+function toggleSummaryRaw(btn) {
+    const details = btn.closest('.compact-summary');
+    const formatted = details.querySelector('.compact-summary-formatted');
+    const raw = details.querySelector('.compact-summary-content');
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        formatted.style.display = 'none';
+        btn.textContent = 'md';
+    } else {
+        raw.style.display = 'none';
+        formatted.style.display = '';
+        btn.textContent = 'raw';
+    }
+}
+
+function toggleHiddenRaw(btn) {
+    const body = btn.closest('.compact-hidden-body');
+    const formatted = body.querySelector('.compact-hidden-formatted');
+    const raw = body.querySelector('.compact-hidden-raw');
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        formatted.style.display = 'none';
+        btn.textContent = 'md';
+    } else {
+        raw.style.display = 'none';
+        formatted.style.display = '';
+        btn.textContent = 'raw';
     }
 }
 </script>

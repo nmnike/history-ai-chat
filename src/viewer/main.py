@@ -86,7 +86,8 @@ def message_to_dict(msg: Message) -> dict:
         "input_tokens": msg.input_tokens,
         "output_tokens": msg.output_tokens,
         "cache_read_tokens": msg.cache_read_tokens,
-        "cache_creation_tokens": msg.cache_creation_tokens
+        "cache_creation_tokens": msg.cache_creation_tokens,
+        "hidden_messages": msg.hidden_messages
     }
 
 
@@ -95,7 +96,7 @@ def message_to_dict(msg: Message) -> dict:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Dashboard page with overview of all projects"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/project/{project_id}", response_class=HTMLResponse)
@@ -107,8 +108,9 @@ async def project_page(
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
+        request,
         "project.html",
-        {"request": request, "project_id": project_id, "platform": platform, "date_filter": date}
+        {"project_id": project_id, "platform": platform, "date_filter": date}
     )
 
 
@@ -121,9 +123,9 @@ async def conversation_page(
 ):
     """Conversation page showing full session"""
     return templates.TemplateResponse(
+        request,
         "conversation.html",
         {
-            "request": request,
             "session_id": session_id,
             "project_id": project_id,
             "platform": platform
@@ -579,6 +581,15 @@ def to_local_datetime(dt):
     return dt
 
 
+def format_message_role(msg: Message) -> str:
+    """Human-friendly role label for exports."""
+    if msg.message_type == "compacted":
+        return "Context Compacted"
+    if msg.role == "tool_result":
+        return "Tool Result"
+    return msg.role.capitalize()
+
+
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
     from collections import Counter
@@ -630,7 +641,7 @@ def export_to_markdown(session: Session) -> str:
             time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
 
             # Determine role label
-            role_label = msg.role.capitalize()  # User, Assistant, System
+            role_label = format_message_role(msg)
             token_str = ""
 
             if msg.role == "assistant":
@@ -679,8 +690,9 @@ def export_to_html(session: Session) -> str:
     ]
 
     for msg in session.messages:
-        role = "User" if msg.role == "user" else "Assistant"
-        lines.append(f'<div class="message {msg.role}">')
+        role = format_message_role(msg)
+        message_class = msg.role if msg.role in ("user", "assistant") else "assistant"
+        lines.append(f'<div class="message {message_class}">')
         lines.append(f'<div class="role">{role}</div>')
         if msg.content:
             lines.append(f'<div class="content">{msg.content}</div>')
