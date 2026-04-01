@@ -95,7 +95,7 @@ def message_to_dict(msg: Message) -> dict:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Dashboard page with overview of all projects"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/project/{project_id}", response_class=HTMLResponse)
@@ -107,8 +107,8 @@ async def project_page(
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
-        "project.html",
-        {"request": request, "project_id": project_id, "platform": platform, "date_filter": date}
+        request, "project.html",
+        {"project_id": project_id, "platform": platform, "date_filter": date}
     )
 
 
@@ -121,9 +121,8 @@ async def conversation_page(
 ):
     """Conversation page showing full session"""
     return templates.TemplateResponse(
-        "conversation.html",
+        request, "conversation.html",
         {
-            "request": request,
             "session_id": session_id,
             "project_id": project_id,
             "platform": platform
