@@ -627,20 +627,19 @@ function renderSessionTiming(session) {
 
     if (session.created_at) {
         const startTime = new Date(session.created_at).toLocaleTimeString();
-        parts.push(`<span class="timing-chip"><i class="bi bi-play-circle"></i> ${startTime}</span>`);
+        parts.push(`<span class="timing-chip"><i class="bi bi-play-circle"></i>&nbsp;${startTime}</span>`);
     }
 
     if (session.ended_at) {
         const endTime = new Date(session.ended_at).toLocaleTimeString();
-        parts.push(`<span class="timing-chip"><i class="bi bi-stop-circle"></i> ${endTime}</span>`);
+        parts.push(`<span class="timing-chip"><i class="bi bi-stop-circle"></i>&nbsp;${endTime}</span>`);
     }
 
     if (session.duration_seconds) {
-        parts.push(`<span class="timing-chip"><i class="bi bi-clock"></i> ${formatDuration(session.duration_seconds)}</span>`);
+        parts.push(`<span class="timing-chip"><i class="bi bi-clock"></i>&nbsp;${formatDuration(session.duration_seconds)}</span>`);
     }
 
-    // Add separator before timing
-    container.innerHTML = parts.length ? '<span class="text-muted mx-1">·</span> ' + parts.join('') : '';
+    container.innerHTML = parts.length ? ' ' + parts.join(' ') : '';
 }
 
 function formatDuration(totalSeconds) {
