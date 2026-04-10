@@ -66,8 +66,17 @@
 const sessionId = {{ session_id|tojson }};
 const projectId = {{ project_id|tojson }};
 const platform = {{ platform|tojson }};
+const TOOL_COLLAPSE_LINE_THRESHOLD = 30;
+const TOOL_COLLAPSE_CHAR_THRESHOLD = 4000;
 let allMessages = [];
 let activeFilter = null;
+
+function shouldExpandToolContent(content) {
+    if (!content) return true;
+    const normalized = String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lineCount = normalized.split('\n').length;
+    return lineCount < TOOL_COLLAPSE_LINE_THRESHOLD && normalized.length < TOOL_COLLAPSE_CHAR_THRESHOLD;
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     initMessageLayout();
@@ -177,9 +186,10 @@ function renderMessages(messages) {
         }
         const toolNameForFilter = isToolResult ? lastToolName : (msg.tool_name || '');
 
-        // Tool result is collapsed by default
-        const collapsedStyle = isToolResult ? 'style="display: none"' : '';
-        const collapsedIcon = isToolResult ? 'bi-chevron-right' : 'bi-chevron-down';
+        const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
+        const messageExpanded = isToolResult ? toolResultExpanded : true;
+        const collapsedStyle = messageExpanded ? '' : 'style="display: none"';
+        const collapsedIcon = messageExpanded ? 'bi-chevron-down' : 'bi-chevron-right';
 
         let contentHtml = '';
 
@@ -228,15 +238,21 @@ function renderMessages(messages) {
             }
         }
 
-        // Tool use - collapsed by default
         if (msg.tool_name) {
+            const toolInputText = msg.tool_input
+                ? (typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : String(msg.tool_input))
+                : '';
+            const toolUseExpanded = shouldExpandToolContent(toolInputText);
+            const toolUseCollapsedStyle = toolUseExpanded ? '' : 'style="display: none"';
+            const toolUseCollapsedIcon = toolUseExpanded ? 'bi-chevron-down' : 'bi-chevron-right';
+
             contentHtml += `
                 <div class="tool-use-block mt-2">
                     <div class="tool-header collapsible-header" onclick="toggleCollapse(this)">
                         <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
-                        <i class="bi bi-chevron-right collapse-icon"></i>
+                        <i class="bi ${toolUseCollapsedIcon} collapse-icon"></i>
                     </div>
-                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" style="display: none">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
+                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" ${toolUseCollapsedStyle}>${escapeHtml(toolInputText)}</pre>` : ''}
                 </div>
             `;
         }

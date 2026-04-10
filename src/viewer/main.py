@@ -109,7 +109,7 @@ async def project_page(
     request: Request,
     project_id: str,
     platform: str = Query(default="claude"),
-    date: str = Query(default="today")
+    date: str = Query(default="week")
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
@@ -139,7 +139,7 @@ async def conversation_page(
 # API Endpoints
 
 @app.get("/api/projects")
-async def list_projects(date: str = Query(default="today")):
+async def list_projects(date: str = Query(default="week")):
     """List all projects from both platforms with optional date filter"""
     from datetime import datetime, date as date_type, timedelta
 
@@ -283,7 +283,7 @@ async def list_projects(date: str = Query(default="today")):
 async def list_sessions(
     project_id: str,
     platform: str = Query(default="claude"),
-    date: str = Query(default="today")
+    date: str = Query(default="week")
 ):
     """List sessions for a project with optional date filter"""
     from datetime import datetime, date as date_type, timedelta

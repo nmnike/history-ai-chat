@@ -87,8 +87,8 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default date filter to today
-    document.getElementById('date-filter').value = 'today';
+    // Set default date filter to last 7 days
+    document.getElementById('date-filter').value = 'week';
     document.getElementById('date-filter').addEventListener('change', loadProjects);
 
     // Favorites toggle
