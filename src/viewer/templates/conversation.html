@@ -192,6 +192,24 @@ function renderMessages(messages) {
         }
         const toolNameForFilter = isToolResult ? lastToolName : (msg.tool_name || '');
 
+        // Extract MCP name for filtering (e.g., "context7" from "mcp__context7__query-docs")
+        let mcpNameForFilter = '';
+        if (toolNameForFilter.startsWith('mcp__')) {
+            const parts = toolNameForFilter.split('__');
+            if (parts.length >= 2) {
+                mcpNameForFilter = parts[1];
+            }
+        }
+
+        // Extract Skill name for filtering from user message content
+        let skillNameForFilter = '';
+        if (isUser && msg.content) {
+            const skillMatch = msg.content.match(/<command-name>\/([^<]+)<\/command-name>/);
+            if (skillMatch) {
+                skillNameForFilter = skillMatch[1];
+            }
+        }
+
         const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
         const messageExpanded = isToolResult ? toolResultExpanded : true;
         const collapsedStyle = messageExpanded ? '' : 'style="display: none"';
@@ -264,7 +282,7 @@ function renderMessages(messages) {
         }
 
         return `
-            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}" data-message-type="${msg.message_type || ''}">
+            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
@@ -541,6 +559,8 @@ function messageMatchesFilter(bubble, filter) {
     const tool = bubble.dataset.tool;
     const role = bubble.dataset.role;
     const messageType = bubble.dataset.messageType;
+    const mcp = bubble.dataset.mcp;
+    const skill = bubble.dataset.skill;
 
     const matchesRole = (
         (filter === 'user' && role === 'user') ||
@@ -549,7 +569,9 @@ function messageMatchesFilter(bubble, filter) {
         (filter === 'assistant' && role === 'assistant')
     );
     const matchesTool = tool === filter;
-    return matchesRole || matchesTool;
+    const matchesMcp = mcp === filter;
+    const matchesSkill = skill === filter;
+    return matchesRole || matchesTool || matchesMcp || matchesSkill;
 }
 
 function toggleFilter(filter) {
@@ -566,6 +588,16 @@ function updateFilterBadges() {
     const badges = document.querySelectorAll('.stat-badge');
     badges.forEach(b => {
         if (activeFilters.has(b.dataset.filter)) {
+            b.classList.add('active-filter');
+        } else {
+            b.classList.remove('active-filter');
+        }
+    });
+    // Also handle tool-summary-badge (MCP/Skills)
+    const toolBadges = document.querySelectorAll('.tool-summary-badge');
+    toolBadges.forEach(b => {
+        const filterValue = b.textContent.trim();
+        if (activeFilters.has(filterValue)) {
             b.classList.add('active-filter');
         } else {
             b.classList.remove('active-filter');
@@ -672,7 +704,7 @@ function renderToolSummary(session) {
 
 function renderToolGroup(title, icon, items, cssClass) {
     let badges = items.map(item =>
-        `<span class="tool-summary-badge">${escapeHtml(item.name)}</span>`
+        `<span class="tool-summary-badge" onclick="toggleFilter('${escapeHtml(item.name)}')">${escapeHtml(item.name)}</span>`
     ).join('');
 
     return `

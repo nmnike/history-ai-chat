@@ -1095,6 +1095,19 @@ pre.compact-hidden-text {
     font-weight: 500;
     border: 1px solid var(--border-color);
     white-space: nowrap;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.tool-summary-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.tool-summary-badge.active-filter {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(59, 130, 246, 0.6);
+    background-color: var(--accent);
+    color: white;
 }
 
 .tool-group-mcp .tool-summary-badge {

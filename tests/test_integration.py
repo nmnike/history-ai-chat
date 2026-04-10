@@ -245,7 +245,8 @@ def test_conversation_template_uses_or_multi_filter_logic():
     assert response.status_code == 200
     assert 'activeFilters.has(filter)' in response.text
     assert 'activeFilters.size === 0' in response.text
-    assert 'return matchesRole || matchesTool;' in response.text
+    # OR logic includes role, tool, mcp, and skill matching
+    assert 'matchesRole || matchesTool || matchesMcp || matchesSkill' in response.text
 
 
 def test_conversation_template_renders_timing_and_tool_cards():
