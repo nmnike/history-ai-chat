@@ -414,3 +414,35 @@ def test_parse_effort_none_when_no_model_command(tmp_path):
 
     assert metadata["effort"] is None
     assert all(m.effort is None for m in messages if m.role == "assistant")
+
+
+def test_claude_session_tracks_end_time(tmp_path):
+    """Test that Session has created_at and ended_at from message timestamps"""
+    session_file = tmp_path / "test-session.jsonl"
+    lines = [
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "First"},
+            "uuid": "msg-1", "timestamp": "2026-04-10T10:00:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Response"}]},
+            "uuid": "msg-2", "timestamp": "2026-04-10T10:05:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+    ]
+    session_file.write_text("\n".join(lines) + "\n")
+
+    # Create project directory structure
+    project_dir = tmp_path / "demo-project"
+    project_dir.mkdir()
+    session_file.rename(project_dir / session_file.name)
+
+    parser = ClaudeParser(str(tmp_path))
+    sessions = parser.get_sessions("demo-project")
+
+    assert len(sessions) == 1
+    assert sessions[0].created_at.isoformat() == "2026-04-10T10:00:00+00:00"
+    assert sessions[0].ended_at.isoformat() == "2026-04-10T10:05:00+00:00"

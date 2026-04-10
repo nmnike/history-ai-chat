@@ -438,3 +438,27 @@ def test_per_message_model_effort(tmp_path):
 
     # Session-level: both models
     assert metadata["model"] == "o3, o3-mini"
+
+
+def test_codex_session_tracks_end_time(tmp_path):
+    """Test that Codex Session has created_at and ended_at from message timestamps"""
+    session_file = tmp_path / "rollout-timing.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-04-10T10:00:00Z",
+            "payload": {"role": "user", "content": [{"type": "input_text", "text": "First"}]}
+        }) + "\n" +
+        json.dumps({
+            "type": "response_item",
+            "timestamp": "2026-04-10T10:05:00Z",
+            "payload": {"role": "assistant", "content": [{"type": "output_text", "text": "Response"}]}
+        }) + "\n"
+    )
+
+    parser = CodexParser(sessions_path=str(tmp_path))
+    sessions = parser.get_sessions()
+
+    assert len(sessions) == 1
+    assert sessions[0].created_at.isoformat() == "2026-04-10T10:00:00+00:00"
+    assert sessions[0].ended_at.isoformat() == "2026-04-10T10:05:00+00:00"

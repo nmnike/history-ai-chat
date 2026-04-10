@@ -535,6 +535,7 @@ class ClaudeParser:
                     messages=messages,
                     first_message=metadata.get("custom_title") or default_preview,
                     created_at=messages[0].timestamp if messages else None,
+                    ended_at=messages[-1].timestamp if messages else None,
                     model=metadata.get("model"),
                     effort=metadata.get("effort"),
                     custom_title=metadata.get("custom_title")

@@ -361,6 +361,7 @@ class CodexParser:
                     messages=messages,
                     first_message=first_user_msg.content[:100] if first_user_msg else None,
                     created_at=messages[0].timestamp if messages else None,
+                    ended_at=messages[-1].timestamp if messages else None,
                     model=metadata.get("model"),
                     effort=metadata.get("effort")
                 )
