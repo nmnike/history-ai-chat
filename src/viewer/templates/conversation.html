@@ -615,11 +615,71 @@ function toggleHiddenRaw(btn) {
 }
 
 function renderSessionTiming(session) {
-    // TODO: implement timing rendering
+    const container = document.getElementById('session-timing');
+    if (!session.created_at && !session.ended_at) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="d-flex flex-wrap gap-2">';
+
+    if (session.created_at) {
+        const startTime = new Date(session.created_at).toLocaleTimeString();
+        html += `<span class="timing-chip"><i class="bi bi-play-circle"></i> Started ${startTime}</span>`;
+    }
+
+    if (session.ended_at) {
+        const endTime = new Date(session.ended_at).toLocaleTimeString();
+        html += `<span class="timing-chip"><i class="bi bi-stop-circle"></i> Ended ${endTime}</span>`;
+    }
+
+    if (session.duration_seconds) {
+        html += `<span class="timing-chip"><i class="bi bi-clock"></i> Duration ${formatDuration(session.duration_seconds)}</span>`;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function formatDuration(totalSeconds) {
+    if (totalSeconds < 60) {
+        return totalSeconds + 's';
+    } else if (totalSeconds < 3600) {
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return mins + 'm ' + secs + 's';
+    } else {
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        return hours + 'h ' + String(mins).padStart(2, '0') + 'm';
+    }
 }
 
 function renderToolSummary(session) {
-    // TODO: implement tool summary rendering
+    const container = document.getElementById('session-tools-summary');
+    const sections = [];
+
+    if (session.mcps && session.mcps.length > 0) {
+        sections.push(renderToolGroup('MCP', 'bi-hdd-network', session.mcps, 'tool-group-mcp'));
+    }
+    if (session.skills && session.skills.length > 0) {
+        sections.push(renderToolGroup('Skills', 'bi-magic', session.skills, 'tool-group-skills'));
+    }
+
+    container.innerHTML = sections.join('');
+}
+
+function renderToolGroup(title, icon, items, cssClass) {
+    let badges = items.map(item =>
+        `<span class="tool-summary-badge">${escapeHtml(item.name)} · ${item.count}</span>`
+    ).join('');
+
+    return `
+        <div class="tool-summary-group ${cssClass}">
+            <span class="tool-summary-title"><i class="bi ${icon}"></i> ${title}</span>
+            <div class="tool-summary-badges">${badges}</div>
+        </div>
+    `;
 }
 </script>
 {% endblock %}

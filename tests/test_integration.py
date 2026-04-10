@@ -209,3 +209,15 @@ def test_conversation_template_uses_or_multi_filter_logic():
     assert 'activeFilters.has(filter)' in response.text
     assert 'activeFilters.size === 0' in response.text
     assert 'return matchesRole || matchesTool;' in response.text
+
+
+def test_conversation_template_renders_timing_and_tool_cards():
+    """Conversation template should have timing and tool summary rendering code"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'Started' in response.text
+    assert 'Ended' in response.text
+    assert 'Duration' in response.text
+    assert 'MCP' in response.text
+    assert 'Skills' in response.text
+    assert 'formatDuration(' in response.text

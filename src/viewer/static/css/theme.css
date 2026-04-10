@@ -1027,3 +1027,71 @@ pre.compact-hidden-text {
     opacity: 1;
     visibility: visible;
 }
+
+/* Session timing and tools summary */
+.session-timing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.timing-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.timing-chip i {
+    font-size: 0.7rem;
+}
+
+.session-tools-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.tool-summary-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.tool-summary-title {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.tool-summary-title i {
+    margin-right: 0.25rem;
+}
+
+.tool-summary-badges {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.tool-summary-badge {
+    padding: 0.15rem 0.4rem;
+    background: var(--bg-secondary);
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: var(--text-primary);
+}
+
+.tool-group-mcp .tool-summary-title {
+    color: #60a5fa;
+}
+
+.tool-group-skills .tool-summary-title {
+    color: #a78bfa;
+}
