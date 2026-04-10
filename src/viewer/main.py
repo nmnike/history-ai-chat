@@ -2,6 +2,7 @@
 """FastAPI application for Claude Codex Viewer"""
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +48,68 @@ templates = Jinja2Templates(directory=str(templates_dir))
 templates.env.globals["VERSION"] = VERSION
 
 
+# Whitelist for skill-like tool names
+SKILL_WHITELIST = {
+    "Skill",
+    "AskUserQuestion",
+    "Agent",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskList",
+    "TaskGet",
+}
+
+
+def get_ended_at(session: Session) -> Optional[datetime]:
+    """Get session end time from session.ended_at or max message timestamp"""
+    if session.ended_at:
+        return session.ended_at
+    timestamps = [m.timestamp for m in session.messages if m.timestamp]
+    return max(timestamps) if timestamps else None
+
+
+def get_duration_seconds(session: Session) -> int:
+    """Get session duration in seconds"""
+    if not session.created_at:
+        return 0
+    ended = get_ended_at(session)
+    if not ended:
+        return 0
+    diff = (ended - session.created_at).total_seconds()
+    return max(0, int(diff))
+
+
+def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
+    """Classify tool_name into MCP and Skills categories"""
+    from collections import Counter
+
+    mcp_counter = Counter()
+    skill_counter = Counter()
+
+    for msg in session.messages:
+        if not msg.tool_name:
+            continue
+
+        # MCP: starts with "mcp__", second segment is MCP name
+        if msg.tool_name.startswith("mcp__"):
+            parts = msg.tool_name.split("__")
+            if len(parts) >= 2:
+                mcp_name = parts[1]
+                mcp_counter[mcp_name] += 1
+
+        # Skills: starts with "functions." and in whitelist
+        elif msg.tool_name.startswith("functions."):
+            skill_name = msg.tool_name.replace("functions.", "")
+            if skill_name in SKILL_WHITELIST:
+                skill_counter[skill_name] += 1
+
+    mcps = [{"name": name, "count": count} for name, count in sorted(mcp_counter.items())]
+    skills = [{"name": name, "count": count} for name, count in sorted(skill_counter.items())]
+    return mcps, skills
+
+
 def session_to_dict(session: Session, platform: str) -> dict:
     """Convert Session to dict for JSON response"""
     # Aggregate tokens from all messages
@@ -55,6 +118,11 @@ def session_to_dict(session: Session, platform: str) -> dict:
     cache_read_tokens = sum(m.cache_read_tokens for m in session.messages)
     cache_creation_tokens = sum(m.cache_creation_tokens for m in session.messages)
 
+    # Compute ended_at, duration, and tool classification
+    ended_at = get_ended_at(session)
+    duration_seconds = get_duration_seconds(session)
+    mcps, skills = classify_tools(session)
+
     return {
         "id": session.id,
         "project_name": session.project_name,
@@ -62,6 +130,10 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "platform": platform,
         "first_message": session.first_message,
         "created_at": session.created_at.isoformat() if session.created_at else None,
+        "ended_at": ended_at.isoformat() if ended_at else None,
+        "duration_seconds": duration_seconds,
+        "mcps": mcps,
+        "skills": skills,
         "message_count": len(session.messages),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

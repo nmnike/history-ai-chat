@@ -49,6 +49,7 @@ class Session:
     messages: list[Message]
     first_message: Optional[str] = None
     created_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
     model: Optional[str] = None
     effort: Optional[str] = None
     custom_title: Optional[str] = None

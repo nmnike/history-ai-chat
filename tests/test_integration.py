@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 from viewer.main import app, cache_db
-from viewer.parsers import Session
+from viewer.parsers import Session, Message
 
 
 client = TestClient(app)
@@ -150,3 +150,42 @@ def test_favorites_api():
     # Verify removed
     response = client.get(f"/api/favorites/{session_id}/status")
     assert response.json()["is_favorite"] is False
+
+
+def test_api_conversation_returns_timing_and_tool_metadata(monkeypatch):
+    """API should return session timing and tool usage metadata"""
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-1",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(role="user", content="hi", uuid="1", timestamp=base, session_id="sess-1", project_path="/tmp/test-project"),
+            Message(role="assistant", content="", uuid="2", timestamp=base + timedelta(minutes=2), session_id="sess-1", project_path="/tmp/test-project", message_type="tool_use", tool_name="mcp__context7__query-docs"),
+            Message(role="assistant", content="", uuid="3", timestamp=base + timedelta(minutes=4), session_id="sess-1", project_path="/tmp/test-project", message_type="tool_use", tool_name="functions.Skill"),
+            Message(role="assistant", content="", uuid="4", timestamp=base + timedelta(minutes=5), session_id="sess-1", project_path="/tmp/test-project", message_type="tool_use", tool_name="Read"),
+            Message(role="assistant", content="", uuid="5", timestamp=base + timedelta(minutes=6), session_id="sess-1", project_path="/tmp/test-project", message_type="tool_use", tool_name="functions.AskUserQuestion"),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            assert project_id == "test-project"
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-1?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    payload = response.json()["session"]
+    assert payload["created_at"] == "2026-04-10T12:00:00"
+    assert payload["ended_at"] == "2026-04-10T12:06:00"
+    assert payload["duration_seconds"] == 360
+    assert payload["mcps"] == [{"name": "context7", "count": 1}]
+    # Skills order is alphabetical
+    skills = payload["skills"]
+    assert len(skills) == 2
+    assert {"name": "Skill", "count": 1} in skills
+    assert {"name": "AskUserQuestion", "count": 1} in skills
