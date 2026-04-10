@@ -30,8 +30,10 @@
             <span id="session-meta-badges"></span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
         </h5>
-        <small class="text-muted" id="session-date"></small>
-        <div id="session-timing" class="session-timing mt-1"></div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <small class="text-muted" id="session-date"></small>
+            <span id="session-timing" class="session-timing"></span>
+        </div>
         <div id="session-stats" class="d-flex flex-wrap gap-1 mt-2"></div>
         <div id="session-tools-summary" class="session-tools-summary mt-2"></div>
     </div>
@@ -621,24 +623,24 @@ function renderSessionTiming(session) {
         return;
     }
 
-    let html = '<div class="d-flex flex-wrap gap-2">';
+    const parts = [];
 
     if (session.created_at) {
         const startTime = new Date(session.created_at).toLocaleTimeString();
-        html += `<span class="timing-chip"><i class="bi bi-play-circle"></i> ${startTime}</span>`;
+        parts.push(`<span class="timing-chip"><i class="bi bi-play-circle"></i> ${startTime}</span>`);
     }
 
     if (session.ended_at) {
         const endTime = new Date(session.ended_at).toLocaleTimeString();
-        html += `<span class="timing-chip"><i class="bi bi-stop-circle"></i> ${endTime}</span>`;
+        parts.push(`<span class="timing-chip"><i class="bi bi-stop-circle"></i> ${endTime}</span>`);
     }
 
     if (session.duration_seconds) {
-        html += `<span class="timing-chip"><i class="bi bi-clock"></i> ${formatDuration(session.duration_seconds)}</span>`;
+        parts.push(`<span class="timing-chip"><i class="bi bi-clock"></i> ${formatDuration(session.duration_seconds)}</span>`);
     }
 
-    html += '</div>';
-    container.innerHTML = html;
+    // Add separator before timing
+    container.innerHTML = parts.length ? '<span class="text-muted mx-1">·</span> ' + parts.join('') : '';
 }
 
 function formatDuration(totalSeconds) {
