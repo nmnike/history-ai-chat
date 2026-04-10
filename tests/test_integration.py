@@ -191,6 +191,43 @@ def test_api_conversation_returns_timing_and_tool_metadata(monkeypatch):
     assert {"name": "AskUserQuestion", "count": 1} in skills
 
 
+def test_api_conversation_parses_skills_from_command_name_tags(monkeypatch):
+    """Skills should be parsed from <command-name> tags in user message content"""
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-2",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="user",
+                content="<command-message>superpowers-brainstorming</command-message>\n<command-name>/superpowers-brainstorming</command-name>\n<command-args>Test args</command-args>",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-2",
+                project_path="/tmp/test-project",
+            ),
+            Message(role="assistant", content="", uuid="2", timestamp=base + timedelta(minutes=1), session_id="sess-2", project_path="/tmp/test-project", message_type="tool_use", tool_name="Read"),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-2?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    payload = response.json()["session"]
+    # Skill should be parsed from <command-name> tag
+    skills = payload["skills"]
+    assert len(skills) == 1
+    assert {"name": "superpowers-brainstorming", "count": 1} in skills
+
+
 def test_conversation_template_contains_metadata_and_multi_filter_ui():
     """Conversation template should have timing/tool containers and multi-filter JS"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")

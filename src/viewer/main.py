@@ -83,26 +83,33 @@ def get_duration_seconds(session: Session) -> int:
 
 def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
     """Classify tool_name into MCP and Skills categories"""
+    import re
     from collections import Counter
 
     mcp_counter = Counter()
     skill_counter = Counter()
 
     for msg in session.messages:
-        if not msg.tool_name:
-            continue
+        # Check tool_name for MCP and function-based skills
+        if msg.tool_name:
+            # MCP: starts with "mcp__", second segment is MCP name
+            if msg.tool_name.startswith("mcp__"):
+                parts = msg.tool_name.split("__")
+                if len(parts) >= 2:
+                    mcp_name = parts[1]
+                    mcp_counter[mcp_name] += 1
 
-        # MCP: starts with "mcp__", second segment is MCP name
-        if msg.tool_name.startswith("mcp__"):
-            parts = msg.tool_name.split("__")
-            if len(parts) >= 2:
-                mcp_name = parts[1]
-                mcp_counter[mcp_name] += 1
+            # Skills: starts with "functions." and in whitelist
+            elif msg.tool_name.startswith("functions."):
+                skill_name = msg.tool_name.replace("functions.", "")
+                if skill_name in SKILL_WHITELIST:
+                    skill_counter[skill_name] += 1
 
-        # Skills: starts with "functions." and in whitelist
-        elif msg.tool_name.startswith("functions."):
-            skill_name = msg.tool_name.replace("functions.", "")
-            if skill_name in SKILL_WHITELIST:
+        # Check content for <command-name> skill invocations (user messages)
+        if msg.role == "user" and msg.content:
+            # Parse <command-name>/skill-name</command-name> tags
+            matches = re.findall(r"<command-name>/([^<]+)</command-name>", msg.content)
+            for skill_name in matches:
                 skill_counter[skill_name] += 1
 
     mcps = [{"name": name, "count": count} for name, count in sorted(mcp_counter.items())]
