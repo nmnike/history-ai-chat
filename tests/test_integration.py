@@ -200,3 +200,12 @@ def test_conversation_template_contains_metadata_and_multi_filter_ui():
     assert 'let activeFilters = new Set();' in response.text
     assert 'function applyFilters()' in response.text
     assert 'function renderToolSummary(session)' in response.text
+
+
+def test_conversation_template_uses_or_multi_filter_logic():
+    """Conversation template should use OR logic for multi-filter"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'activeFilters.has(filter)' in response.text
+    assert 'activeFilters.size === 0' in response.text
+    assert 'return matchesRole || matchesTool;' in response.text

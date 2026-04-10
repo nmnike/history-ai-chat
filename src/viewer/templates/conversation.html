@@ -535,46 +535,53 @@ function formatTokens(n) {
     return n.toString();
 }
 
+function messageMatchesFilter(bubble, filter) {
+    const tool = bubble.dataset.tool;
+    const role = bubble.dataset.role;
+    const messageType = bubble.dataset.messageType;
+
+    const matchesRole = (
+        (filter === 'user' && role === 'user') ||
+        (filter === 'compacted' && messageType === 'compacted') ||
+        (filter === 'system' && role === 'system' && messageType !== 'compacted') ||
+        (filter === 'assistant' && role === 'assistant')
+    );
+    const matchesTool = tool === filter;
+    return matchesRole || matchesTool;
+}
+
 function toggleFilter(filter) {
-    const badges = document.querySelectorAll('.stat-badge');
-    const bubbles = document.querySelectorAll('.message-bubble');
-
-    if (activeFilter === filter) {
-        // Toggle off - show all
-        activeFilter = null;
-        badges.forEach(b => b.classList.remove('active-filter'));
-        bubbles.forEach(b => b.style.display = '');
+    if (activeFilters.has(filter)) {
+        activeFilters.delete(filter);
     } else {
-        // Apply filter
-        activeFilter = filter;
-        badges.forEach(b => {
-            if (b.dataset.filter === filter) {
-                b.classList.add('active-filter');
-            } else {
-                b.classList.remove('active-filter');
-            }
-        });
-
-        bubbles.forEach(b => {
-            const tool = b.dataset.tool;
-            const role = b.dataset.role;
-            const messageType = b.dataset.messageType;
-
-            if (filter === 'user' && role === 'user') {
-                b.style.display = '';
-            } else if (filter === 'compacted' && messageType === 'compacted') {
-                b.style.display = '';
-            } else if (filter === 'system' && role === 'system') {
-                b.style.display = messageType === 'compacted' ? 'none' : '';
-            } else if (filter === 'assistant' && role === 'assistant') {
-                b.style.display = '';
-            } else if (tool === filter) {
-                b.style.display = '';
-            } else {
-                b.style.display = 'none';
-            }
-        });
+        activeFilters.add(filter);
     }
+    updateFilterBadges();
+    applyFilters();
+}
+
+function updateFilterBadges() {
+    const badges = document.querySelectorAll('.stat-badge');
+    badges.forEach(b => {
+        if (activeFilters.has(b.dataset.filter)) {
+            b.classList.add('active-filter');
+        } else {
+            b.classList.remove('active-filter');
+        }
+    });
+}
+
+function applyFilters() {
+    const bubbles = document.querySelectorAll('.message-bubble');
+    if (activeFilters.size === 0) {
+        bubbles.forEach(b => b.style.display = '');
+        return;
+    }
+
+    bubbles.forEach(bubble => {
+        const matches = Array.from(activeFilters).some(filter => messageMatchesFilter(bubble, filter));
+        bubble.style.display = matches ? '' : 'none';
+    });
 }
 
 function toggleSummaryRaw(btn) {
@@ -613,10 +620,6 @@ function renderSessionTiming(session) {
 
 function renderToolSummary(session) {
     // TODO: implement tool summary rendering
-}
-
-function applyFilters() {
-    // TODO: implement multi-filter logic
 }
 </script>
 {% endblock %}
