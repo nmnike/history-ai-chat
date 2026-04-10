@@ -1110,6 +1110,17 @@ pre.compact-hidden-text {
     color: white;
 }
 
+/* Highlight flash when scrolling to element */
+.highlight-flash {
+    animation: highlight-pulse 1.5s ease-out;
+}
+
+@keyframes highlight-pulse {
+    0% { box-shadow: 0 0 0 4px var(--accent), 0 0 20px rgba(59, 130, 246, 0.8); }
+    50% { box-shadow: 0 0 0 2px var(--accent), 0 0 10px rgba(59, 130, 246, 0.4); }
+    100% { box-shadow: none; }
+}
+
 .tool-group-mcp .tool-summary-badge {
     border-color: rgba(59, 130, 246, 0.3);
 }

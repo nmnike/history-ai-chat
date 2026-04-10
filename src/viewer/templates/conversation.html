@@ -622,6 +622,28 @@ function applyFilters() {
     });
 }
 
+function scrollToFirstUsage(name) {
+    // Find first message-bubble with matching data-mcp or data-skill
+    const bubbles = document.querySelectorAll('.message-bubble');
+    for (const bubble of bubbles) {
+        const mcp = bubble.dataset.mcp;
+        const skill = bubble.dataset.skill;
+        if (mcp === name || skill === name) {
+            // Scroll to element with offset for header
+            const headerOffset = 60;
+            const elementPosition = bubble.getBoundingClientRect().top + window.pageYOffset;
+            window.scrollTo({
+                top: elementPosition - headerOffset,
+                behavior: 'smooth'
+            });
+            // Briefly highlight the element
+            bubble.classList.add('highlight-flash');
+            setTimeout(() => bubble.classList.remove('highlight-flash'), 1500);
+            return;
+        }
+    }
+}
+
 function toggleSummaryRaw(btn) {
     const details = btn.closest('.compact-summary');
     const formatted = details.querySelector('.compact-summary-formatted');
@@ -708,7 +730,7 @@ function renderToolSummary(session) {
 
 function renderToolGroup(title, icon, items, cssClass) {
     let badges = items.map(item =>
-        `<span class="tool-summary-badge" onclick="toggleFilter('${escapeHtml(item.name)}')">${escapeHtml(item.name)}</span>`
+        `<span class="tool-summary-badge" onclick="scrollToFirstUsage('${escapeHtml(item.name)}')">${escapeHtml(item.name)}</span>`
     ).join('');
 
     return `
