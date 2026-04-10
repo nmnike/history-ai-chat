@@ -32,6 +32,8 @@
         </h5>
         <div id="session-stats" class="d-flex flex-wrap gap-1"></div>
         <small class="text-muted" id="session-date"></small>
+        <div id="session-timing" class="session-timing mt-2"></div>
+        <div id="session-tools-summary" class="session-tools-summary mt-3"></div>
     </div>
     <div class="col-md-4 text-end">
         <div class="btn-group me-2">
@@ -69,7 +71,7 @@ const platform = {{ platform|tojson }};
 const TOOL_COLLAPSE_LINE_THRESHOLD = 30;
 const TOOL_COLLAPSE_CHAR_THRESHOLD = 4000;
 let allMessages = [];
-let activeFilter = null;
+let activeFilters = new Set();
 
 function shouldExpandToolContent(content) {
     if (!content) return true;
@@ -151,6 +153,8 @@ function loadConversation() {
             allMessages = messages;
             renderMessages(messages);
             updateSessionStats(messages);
+            renderSessionTiming(session);
+            renderToolSummary(session);
         })
         .catch(err => {
             console.error('Failed to load conversation:', err);
@@ -601,6 +605,18 @@ function toggleHiddenRaw(btn) {
         formatted.style.display = '';
         btn.textContent = 'raw';
     }
+}
+
+function renderSessionTiming(session) {
+    // TODO: implement timing rendering
+}
+
+function renderToolSummary(session) {
+    // TODO: implement tool summary rendering
+}
+
+function applyFilters() {
+    // TODO: implement multi-filter logic
 }
 </script>
 {% endblock %}

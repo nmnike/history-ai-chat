@@ -189,3 +189,14 @@ def test_api_conversation_returns_timing_and_tool_metadata(monkeypatch):
     assert len(skills) == 2
     assert {"name": "Skill", "count": 1} in skills
     assert {"name": "AskUserQuestion", "count": 1} in skills
+
+
+def test_conversation_template_contains_metadata_and_multi_filter_ui():
+    """Conversation template should have timing/tool containers and multi-filter JS"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'id="session-timing"' in response.text
+    assert 'id="session-tools-summary"' in response.text
+    assert 'let activeFilters = new Set();' in response.text
+    assert 'function applyFilters()' in response.text
+    assert 'function renderToolSummary(session)' in response.text
