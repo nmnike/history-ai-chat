@@ -209,6 +209,10 @@ function renderMessages(messages) {
                 skillNameForFilter = skillMatch[1];
             }
         }
+        // Also extract Skill name from assistant tool_use with Skill tool
+        if (!isUser && msg.tool_name === 'Skill' && msg.tool_input && msg.tool_input.skill) {
+            skillNameForFilter = msg.tool_input.skill;
+        }
 
         const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
         const messageExpanded = isToolResult ? toolResultExpanded : true;

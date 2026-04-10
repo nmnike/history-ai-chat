@@ -99,6 +99,12 @@ def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
                     mcp_name = parts[1]
                     mcp_counter[mcp_name] += 1
 
+            # Skills via Skill tool with skill input (assistant tool_use)
+            elif msg.tool_name == "Skill" and msg.tool_input:
+                skill_name = msg.tool_input.get("skill", "")
+                if skill_name:
+                    skill_counter[skill_name] += 1
+
             # Skills: starts with "functions." and in whitelist
             elif msg.tool_name.startswith("functions."):
                 skill_name = msg.tool_name.replace("functions.", "")
