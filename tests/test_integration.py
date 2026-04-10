@@ -215,9 +215,11 @@ def test_conversation_template_renders_timing_and_tool_cards():
     """Conversation template should have timing and tool summary rendering code"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
     assert response.status_code == 200
-    assert 'Started' in response.text
-    assert 'Ended' in response.text
-    assert 'Duration' in response.text
-    assert 'MCP' in response.text
+    # Timing is rendered with icons only (no labels like "Started")
+    assert 'bi-play-circle' in response.text
+    assert 'bi-stop-circle' in response.text
+    assert 'bi-clock' in response.text
+    # Tool groups
+    assert 'MCP Tools' in response.text
     assert 'Skills' in response.text
     assert 'formatDuration(' in response.text
