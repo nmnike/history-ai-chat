@@ -672,7 +672,7 @@ function renderToolSummary(session) {
 
 function renderToolGroup(title, icon, items, cssClass) {
     let badges = items.map(item =>
-        `<span class="tool-summary-badge">${escapeHtml(item.name)} <span class="tool-calls">(${item.count} call${item.count > 1 ? 's' : ''})</span></span>`
+        `<span class="tool-summary-badge">${escapeHtml(item.name)}</span>`
     ).join('');
 
     return `
