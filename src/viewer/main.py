@@ -713,15 +713,65 @@ def format_message_role(msg: Message) -> str:
 def export_to_markdown(session: Session, platform: str = "claude") -> str:
     """Export session to Markdown format with full header metadata"""
     from collections import Counter
+    import re
 
     # Calculate aggregate statistics
     user_count = sum(1 for m in session.messages if m.role == "user")
     assistant_count = sum(1 for m in session.messages if m.role == "assistant")
     tool_calls = sum(1 for m in session.messages if m.tool_name)
 
-    # Tool breakdown
-    tool_counts = Counter(m.tool_name for m in session.messages if m.tool_name)
-    tool_breakdown = ", ".join(f"{name}: {count}" for name, count in tool_counts.most_common())
+    # Unified tool breakdown (combine regular tools, MCP, Skills)
+    unified_tool_counts = Counter()
+    for msg in session.messages:
+        if not msg.tool_name:
+            continue
+        # MCP: extract server name
+        if msg.tool_name.startswith("mcp__"):
+            parts = msg.tool_name.split("__")
+            if len(parts) >= 2:
+                unified_tool_counts[f"mcp:{parts[1]}"] += 1
+            else:
+                unified_tool_counts[msg.tool_name] += 1
+        # Skill tool
+        elif msg.tool_name == "Skill" and msg.tool_input:
+            skill_name = msg.tool_input.get("skill", "")
+            if skill_name:
+                unified_tool_counts[f"skill:{skill_name}"] += 1
+            else:
+                unified_tool_counts[msg.tool_name] += 1
+        # Functions skills
+        elif msg.tool_name.startswith("functions."):
+            skill_name = msg.tool_name.replace("functions.", "")
+            if skill_name in SKILL_WHITELIST:
+                unified_tool_counts[f"skill:{skill_name}"] += 1
+            else:
+                unified_tool_counts[msg.tool_name] += 1
+        else:
+            unified_tool_counts[msg.tool_name] += 1
+
+    # Add skill invocations from user messages
+    for msg in session.messages:
+        if msg.role == "user" and msg.content:
+            matches = re.findall(r"<command-name>/([^<]+)</command-name>", msg.content)
+            for skill_name in matches:
+                unified_tool_counts[f"skill:{skill_name}"] += 1
+        # Skill from tool_result
+        if msg.role == "tool_result" and msg.content and msg.content.startswith("Launching skill:"):
+            skill_name = msg.content.replace("Launching skill:", "").strip()
+            if skill_name:
+                unified_tool_counts[f"skill:{skill_name}"] += 1
+
+    # Format breakdown - clean prefixes for display
+    breakdown_items = []
+    for name, count in unified_tool_counts.most_common():
+        # Clean prefix for display
+        display_name = name
+        if name.startswith("mcp:"):
+            display_name = name[4:]  # Remove "mcp:" prefix
+        elif name.startswith("skill:"):
+            display_name = name[6:]  # Remove "skill:" prefix
+        breakdown_items.append(f"{display_name}: {count}")
+    tool_breakdown = ", ".join(breakdown_items)
 
     # Token totals
     total_input = sum(m.input_tokens for m in session.messages)
@@ -732,9 +782,6 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
 
     # Cost calculation
     cost = calculate_session_cost(session)
-
-    # MCP and Skills classification
-    mcps, skills = classify_tools(session)
 
     # Timing
     local_created = to_local_datetime(session.created_at)
@@ -812,16 +859,6 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
             tool_stats += f" ({tool_breakdown})"
         stats_parts.append(tool_stats)
     lines.append(f"**Messages:** {' • '.join(stats_parts)}")
-
-    # MCP Tools
-    if mcps:
-        mcp_str = ", ".join(f"{m['name']} ({m['count']})" for m in mcps)
-        lines.append(f"**MCP Tools:** {mcp_str}")
-
-    # Skills
-    if skills:
-        skill_str = ", ".join(f"{s['name']} ({s['count']})" for s in skills)
-        lines.append(f"**Skills:** {skill_str}")
 
     lines.append("\n---\n")
 
