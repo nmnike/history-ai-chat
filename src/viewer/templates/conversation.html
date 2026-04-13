@@ -245,12 +245,11 @@ function renderMessages(messages) {
 
         // Main content
         if (msg.content) {
-            const parsedToolResultContent = isToolResult ? parseToolResultLibraryContent(msg.content) : null;
             const parsedSkillDumpContent = parseSkillDumpContent(msg.content);
             const parsedCompactAssistantContent = msg.role === 'assistant' && !isToolResult && !isCompacted
                 ? parseCompactAssistantContent(msg.content)
                 : null;
-            if (parsedToolResultContent) {
+            if (isToolResult) {
                 contentHtml += renderToolResultContent(msg.content);
             } else if (parsedSkillDumpContent) {
                 contentHtml += renderSkillDumpContent(parsedSkillDumpContent);
@@ -336,6 +335,44 @@ function parseToolResultLibraryContent(content) {
 
 function renderToolResultContent(content) {
     const parsed = parseToolResultLibraryContent(content);
+
+    // Try to parse as JSON and format nicely (like renderToolInput)
+    let jsonData = null;
+    try {
+        jsonData = JSON.parse(content);
+    } catch (e) {
+        // Not JSON, continue with other parsing
+    }
+
+    if (jsonData && typeof jsonData === 'object') {
+        const formattedJson = JSON.stringify(normalizeToolInputValue(jsonData), null, 2);
+        const multilineFields = collectMultilineToolInputFields(normalizeToolInputValue(jsonData));
+
+        let readableViewHtml = '';
+        if (multilineFields.length > 0) {
+            readableViewHtml = `
+                <div class="tool-input-multiline-fields">
+                    ${multilineFields.map(field => `
+                        <div class="tool-input-field">
+                            <div class="tool-input-field-label">${escapeHtml(field.path.join('.'))}</div>
+                            <pre class="tool-input-field-value">${escapeHtml(field.value)}</pre>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        const hasCustomView = Boolean(readableViewHtml);
+
+        return `
+            <div class="message-content tool-result-readable-view collapse-content">
+                ${readableViewHtml}
+                ${hasCustomView ? '<button type="button" class="tool-input-raw-toggle tool-result-raw-toggle" onclick="toggleToolResultRaw(this)">Show raw JSON</button>' : ''}
+                <pre class="tool-input tool-input-raw mb-0 tool-result-raw" ${hasCustomView ? 'style="display: none"' : ''}>${escapeHtml(formattedJson)}</pre>
+            </div>
+        `;
+    }
+
     if (!parsed) return `<div class="message-content collapse-content">${formatContent(content)}</div>`;
 
     return `

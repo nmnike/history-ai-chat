@@ -393,6 +393,16 @@ def test_conversation_template_supports_compact_tool_result_library_preview():
 
 
 
+def test_conversation_template_routes_all_tool_results_through_tool_result_renderer():
+    """Conversation template should send any tool_result content through renderToolResultContent, not only library previews"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'if (isToolResult) {' in response.text
+    assert 'contentHtml += renderToolResultContent(msg.content);' in response.text
+    assert 'if (parsedToolResultContent) {' not in response.text
+
+
+
 def test_conversation_template_supports_compact_assistant_content_preview():
     """Conversation template should render spaced assistant text in a compact readable view"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
