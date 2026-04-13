@@ -118,9 +118,27 @@ def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
             for skill_name in matches:
                 skill_counter[skill_name] += 1
 
+        # Check tool_result content for "Launching skill:" (skill tool responses)
+        if msg.role == "tool_result" and msg.content and msg.content.startswith("Launching skill:"):
+            skill_name = msg.content.replace("Launching skill:", "").strip()
+            if skill_name:
+                skill_counter[skill_name] += 1
+
     mcps = [{"name": name, "count": count} for name, count in sorted(mcp_counter.items())]
     skills = [{"name": name, "count": count} for name, count in sorted(skill_counter.items())]
     return mcps, skills
+
+
+def get_project_display_name(project_id: str, platform: str) -> str:
+    """Resolve project display name without changing routing id."""
+    if platform != "claude" or not project_id:
+        return project_id
+
+    for project in claude_parser.get_projects():
+        if project.get("id") == project_id:
+            return project.get("name") or project_id
+
+    return project_id
 
 
 def session_to_dict(session: Session, platform: str) -> dict:
@@ -199,7 +217,12 @@ async def project_page(
     """Project page showing sessions"""
     return templates.TemplateResponse(
         request, "project.html",
-        {"project_id": project_id, "platform": platform, "date_filter": date}
+        {
+            "project_id": project_id,
+            "project_name": get_project_display_name(project_id, platform),
+            "platform": platform,
+            "date_filter": date,
+        }
     )
 
 
@@ -216,6 +239,7 @@ async def conversation_page(
         {
             "session_id": session_id,
             "project_id": project_id,
+            "project_name": get_project_display_name(project_id, platform),
             "platform": platform
         }
     )
@@ -552,6 +576,11 @@ async def search(
 async def list_favorites():
     """List all favorite sessions"""
     favorites = cache_db.get_favorites()
+    # Add display names for Claude projects
+    for fav in favorites:
+        fav["project_name"] = get_project_display_name(
+            fav.get("project", ""), fav.get("platform", "claude")
+        )
     return {"favorites": favorites}
 
 

@@ -14,7 +14,7 @@
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/">Home</a></li>
-                <li class="breadcrumb-item"><a href="/project/{{ project_id }}?platform={{ platform }}">{{ project_id }}</a></li>
+                <li class="breadcrumb-item"><a href="/project/{{ project_id }}?platform={{ platform }}">{{ project_name }}</a></li>
                 <li class="breadcrumb-item active">Conversation</li>
             </ol>
         </nav>
@@ -212,6 +212,10 @@ function renderMessages(messages) {
         }
         if (!isUser && (msg.tool_name === 'Skill' || msg.tool_name === 'functions.Skill') && msg.tool_input && msg.tool_input.skill) {
             currentSkillNameForFilter = msg.tool_input.skill;
+        }
+        // Extract skill name from tool_result content "Launching skill: {name}"
+        if (isToolResult && msg.content && msg.content.startsWith('Launching skill:')) {
+            currentSkillNameForFilter = msg.content.replace('Launching skill:', '').trim();
         }
         if (currentSkillNameForFilter) {
             lastSkillName = currentSkillNameForFilter;

@@ -61,6 +61,38 @@ def test_project_page_defaults_to_last_7_days():
     assert 'const initialDateFilter = "week";' in response.text
 
 
+def test_project_page_renders_display_name_for_claude_project(monkeypatch):
+    class StubClaudeParser:
+        def get_projects(self):
+            return [{
+                "id": "C--AI-ai-dev-history-ai-chat",
+                "name": "C:\\AI\\ai_dev\\history-ai-chat",
+                "path": "C:/tmp/project",
+            }]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/project/C--AI-ai-dev-history-ai-chat?platform=claude")
+    assert response.status_code == 200
+    assert "C:\\AI\\ai_dev\\history-ai-chat" in response.text
+
+
+def test_conversation_page_renders_display_name_for_claude_project(monkeypatch):
+    class StubClaudeParser:
+        def get_projects(self):
+            return [{
+                "id": "C--AI-ai-dev-history-ai-chat",
+                "name": "C:\\AI\\ai_dev\\history-ai-chat",
+                "path": "C:/tmp/project",
+            }]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/conversation/test-session?project_id=C--AI-ai-dev-history-ai-chat&platform=claude")
+    assert response.status_code == 200
+    assert "C:\\AI\\ai_dev\\history-ai-chat" in response.text
+
+
 def test_conversation_template_has_30_line_tool_threshold():
     """Conversation UI should use line and size thresholds for tool collapse"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
@@ -141,7 +173,12 @@ def test_favorites_api():
     # Get all favorites
     response = client.get("/api/favorites")
     assert response.status_code == 200
-    assert len(response.json()["favorites"]) >= 1
+    favorites = response.json()["favorites"]
+    assert len(favorites) >= 1
+    # Favorites should include project_name field
+    fav = favorites[0]
+    assert "project_name" in fav
+    assert fav["project_name"] == fav["project"]  # For test-project, display name equals project
 
     # Remove from favorites
     response = client.delete(f"/api/favorites/{session_id}")
@@ -382,3 +419,49 @@ def test_conversation_template_supports_compact_assistant_content_preview():
     css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
     assert '.assistant-readable-view {' in css_text
     assert 'white-space: normal;' in css_text
+
+
+def test_api_conversation_parses_skills_from_tool_result_launching_skill(monkeypatch):
+    """Skills should be parsed from 'Launching skill:' in tool_result messages"""
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-3",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="tool_result",
+                content="Launching skill: superpowers-brainstorming",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-3",
+                project_path="/tmp/test-project",
+                message_type="tool_result",
+            ),
+            Message(
+                role="tool_result",
+                content="Launching skill: superpowers-test-driven-development",
+                uuid="2",
+                timestamp=base + timedelta(minutes=1),
+                session_id="sess-3",
+                project_path="/tmp/test-project",
+                message_type="tool_result",
+            ),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-3?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    payload = response.json()["session"]
+    skills = payload["skills"]
+    assert len(skills) == 2
+    assert {"name": "superpowers-brainstorming", "count": 1} in skills
+    assert {"name": "superpowers-test-driven-development", "count": 1} in skills
