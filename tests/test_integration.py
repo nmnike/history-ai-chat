@@ -353,3 +353,32 @@ def test_conversation_template_supports_compact_tool_result_library_preview():
     css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
     assert '.tool-result-readable-view {' in css_text
     assert 'white-space: normal;' in css_text
+
+
+
+def test_conversation_template_supports_compact_assistant_content_preview():
+    """Conversation template should render spaced assistant text in a compact readable view"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function parseCompactAssistantContent(content)' in response.text
+    assert 'function renderCompactAssistantContent(parsed)' in response.text
+    assert 'parseCompactAssistantContent(msg.content)' in response.text
+    assert 'contentHtml += renderCompactAssistantContent(parsedCompactAssistantContent);' in response.text
+    assert 'assistant-readable-view' in response.text
+    assert 'assistant-readable-list' in response.text
+    assert 'const codeBlocks = [];' in response.text
+    assert "return `__CODE_BLOCK_${codeBlocks.length - 1}__`;" in response.text
+    assert "const restoreCodeBlocks = text => text.replace(/__CODE_BLOCK_(\\d+)__/g, (match, index) => codeBlocks[Number(index)] || '');" in response.text
+    assert 'const blocks = [];' in response.text
+    assert 'let currentBlock = null;' in response.text
+    assert 'currentBlock.parts.push(part);' in response.text
+    assert 'return { blocks };' in response.text
+    assert 'const blockParts = section.split(/\\n(?=#{1,6}\\s)/).map(part => part.trim()).filter(Boolean);' in response.text
+    assert "parts.push({ type: 'code', text: restoreCodeBlocks(line) });" in response.text
+    assert "type: headingMatch[1].length <= 2 ? 'block_heading' : 'label'" in response.text
+    assert 'assistant-readable-block' in response.text
+    assert 'assistant-readable-label' in response.text
+
+    css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
+    assert '.assistant-readable-view {' in css_text
+    assert 'white-space: normal;' in css_text

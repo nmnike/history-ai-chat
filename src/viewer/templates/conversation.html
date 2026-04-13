@@ -243,6 +243,9 @@ function renderMessages(messages) {
         if (msg.content) {
             const parsedToolResultContent = isToolResult ? parseToolResultLibraryContent(msg.content) : null;
             const parsedSkillDumpContent = parseSkillDumpContent(msg.content);
+            const parsedCompactAssistantContent = msg.role === 'assistant' && !isToolResult && !isCompacted
+                ? parseCompactAssistantContent(msg.content)
+                : null;
             if (parsedToolResultContent) {
                 contentHtml += renderToolResultContent(msg.content);
             } else if (parsedSkillDumpContent) {
@@ -272,6 +275,8 @@ function renderMessages(messages) {
                     contentHtml += `</div></div></details>`;
                 }
                 contentHtml += `</div>`;
+            } else if (parsedCompactAssistantContent) {
+                contentHtml += renderCompactAssistantContent(parsedCompactAssistantContent);
             } else {
                 contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
             }
@@ -362,6 +367,149 @@ function renderSkillDumpContent(parsed) {
             ${parsed.body ? `<pre class="tool-input-field-value skill-dump-body">${escapeHtml(parsed.body)}</pre>` : ''}
             <button type="button" class="tool-input-raw-toggle skill-dump-raw-toggle" onclick="toggleSkillDumpRaw(this)">Show raw</button>
             <pre class="tool-input tool-input-raw mb-0 skill-dump-raw" style="display: none">${escapeHtml(parsed.raw)}</pre>
+        </div>
+    `;
+}
+
+function parseCompactAssistantContent(content) {
+    if (!content) return null;
+
+    const codeBlocks = [];
+    const contentWithoutCode = content.replace(/```[\s\S]*?```/g, match => {
+        codeBlocks.push(match);
+        return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+    });
+
+    const normalized = compactMultilineText(contentWithoutCode).trim();
+    if (!normalized) return null;
+
+    const sections = normalized.split(/\n{2,}/).map(section => section.trim()).filter(Boolean);
+    if (sections.length < 2) return null;
+
+    const restoreCodeBlocks = text => text.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => codeBlocks[Number(index)] || '');
+    const cleanHeading = text => restoreCodeBlocks(text).replace(/^#{1,6}\s+/, '').trim();
+    const isListLine = line => /^[-•]\s+/.test(line) || /^\d+\.\s+/.test(line);
+    const parseContentLines = lines => {
+        const parts = [];
+        let textBuffer = [];
+        let listBuffer = [];
+        let currentListOrdered = false;
+
+        const flushText = () => {
+            if (textBuffer.length === 0) return;
+            parts.push({ type: 'text', text: restoreCodeBlocks(textBuffer.join('\n')) });
+            textBuffer = [];
+        };
+
+        const flushList = () => {
+            if (listBuffer.length === 0) return;
+            parts.push({
+                type: 'list',
+                ordered: currentListOrdered,
+                items: listBuffer.map(line => restoreCodeBlocks(line.replace(/^(?:[-•]|\d+\.)\s+/, '').trim())).filter(Boolean),
+            });
+            listBuffer = [];
+        };
+
+        for (const line of lines) {
+            if (/^__CODE_BLOCK_\d+__$/.test(line)) {
+                flushText();
+                flushList();
+                parts.push({ type: 'code', text: restoreCodeBlocks(line) });
+                continue;
+            }
+
+            if (isListLine(line)) {
+                const isOrdered = /^\d+\.\s+/.test(line);
+                if (listBuffer.length > 0 && currentListOrdered !== isOrdered) {
+                    flushList();
+                }
+                flushText();
+                currentListOrdered = isOrdered;
+                listBuffer.push(line);
+                continue;
+            }
+
+            flushList();
+            textBuffer.push(line);
+        }
+
+        flushText();
+        flushList();
+        return parts;
+    };
+
+    const parsedParts = sections.flatMap(section => {
+        const blockParts = section.split(/\n(?=#{1,6}\s)/).map(part => part.trim()).filter(Boolean);
+        return blockParts.flatMap(part => {
+            const lines = part.split('\n').map(line => line.trim()).filter(Boolean);
+            if (lines.length === 0) return [];
+
+            if (/^---+$/.test(lines.join(''))) {
+                return [{ type: 'divider' }];
+            }
+
+            const headingMatch = lines[0].match(/^(#{1,6})\s+(.+)$/);
+            if (headingMatch) {
+                const heading = {
+                    type: headingMatch[1].length <= 2 ? 'block_heading' : 'label',
+                    level: headingMatch[1].length,
+                    text: cleanHeading(lines[0]),
+                };
+                return [heading, ...parseContentLines(lines.slice(1))];
+            }
+
+            return parseContentLines(lines);
+        });
+    }).filter(Boolean);
+
+    const listPartsCount = parsedParts.filter(part => part.type === 'list').length;
+    if (listPartsCount === 0) return null;
+
+    const blocks = [];
+    let currentBlock = null;
+    for (const part of parsedParts) {
+        if (part.type === 'divider') {
+            currentBlock = null;
+            continue;
+        }
+        if (part.type === 'block_heading') {
+            currentBlock = { heading: part.text, parts: [] };
+            blocks.push(currentBlock);
+            continue;
+        }
+        if (!currentBlock) {
+            currentBlock = { heading: '', parts: [] };
+            blocks.push(currentBlock);
+        }
+        currentBlock.parts.push(part);
+    }
+
+    const meaningfulBlocks = blocks.filter(block => block.heading || block.parts.length > 0);
+    if (meaningfulBlocks.length < 2) return null;
+
+    return { blocks };
+}
+
+function renderCompactAssistantContent(parsed) {
+    return `
+        <div class="message-content assistant-readable-view collapse-content">
+            ${parsed.blocks.map(block => `
+                <div class="assistant-readable-block">
+                    ${block.heading ? `<div class="assistant-readable-heading">${formatContent(block.heading)}</div>` : ''}
+                    ${block.parts.map(part => {
+                        if (part.type === 'label') {
+                            return `<div class="assistant-readable-label">${formatContent(part.text)}</div>`;
+                        }
+                        if (part.type === 'list') {
+                            const tag = part.ordered ? 'ol' : 'ul';
+                            return `<div class="assistant-readable-section"><${tag} class="assistant-readable-list">${part.items.map(item => `<li class="assistant-readable-item">${formatContent(item)}</li>`).join('')}</${tag}></div>`;
+                        }
+                        const extraClass = part.type === 'code' ? ' assistant-readable-code' : '';
+                        return `<div class="assistant-readable-section${extraClass}">${formatContent(part.text)}</div>`;
+                    }).join('')}
+                </div>
+            `).join('')}
         </div>
     `;
 }

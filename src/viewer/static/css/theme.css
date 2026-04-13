@@ -1059,6 +1059,55 @@ pre.compact-hidden-text {
     white-space: normal;
 }
 
+.assistant-readable-view {
+    display: grid;
+    gap: 10px;
+    white-space: normal;
+}
+
+.assistant-readable-block {
+    display: grid;
+    gap: 6px;
+}
+
+.assistant-readable-heading {
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+.assistant-readable-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.assistant-readable-section {
+    background-color: color-mix(in srgb, var(--assistant-bg) 55%, var(--bg-primary));
+    padding: 10px 12px;
+    border-radius: 8px;
+    line-height: 1.45;
+}
+
+.assistant-readable-code {
+    overflow-x: auto;
+}
+
+.assistant-readable-block .assistant-readable-section + .assistant-readable-section {
+    margin-top: -2px;
+}
+
+.assistant-readable-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: grid;
+    gap: 4px;
+}
+
+.assistant-readable-item {
+    margin: 0;
+}
+
 .skill-readable-body,
 .skill-dump-body {
     max-height: 320px;
