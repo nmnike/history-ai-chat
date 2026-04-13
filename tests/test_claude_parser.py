@@ -131,6 +131,42 @@ def test_parse_assistant_message_with_tool_use(tmp_path):
     assert messages[0].tool_input == {"file_path": "/src/main.py"}
 
 
+
+def test_parse_tool_result_block_list_preserves_json_text(tmp_path):
+    """tool_result block list with text payload should be unwrapped to the text content"""
+    session_file = tmp_path / "test-session.jsonl"
+    payload = {
+        "date": "2026-04-09 09:47:15",
+        "fileinfos": [{"path": "file:///app/.temp/tmpczrb7640/src/module.bsl", "diagnostics": []}],
+    }
+    session_file.write_text(json.dumps({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "tool-123",
+                    "content": [
+                        {"type": "text", "text": json.dumps(payload, ensure_ascii=False)}
+                    ]
+                }
+            ]
+        },
+        "uuid": "user-tool-result-1",
+        "timestamp": "2026-04-09T09:47:15.623Z",
+        "sessionId": "session-json",
+        "cwd": "/test/project"
+    }, ensure_ascii=False) + "\n")
+
+    parser = ClaudeParser()
+    messages, _ = parser.parse_session(session_file)
+
+    assert len(messages) == 1
+    assert messages[0].role == "tool_result"
+    assert messages[0].content == json.dumps(payload, ensure_ascii=False)
+
+
 def test_parse_multiple_messages(tmp_path):
     """Test parsing multiple messages from one file"""
     session_file = tmp_path / "test-session.jsonl"

@@ -359,7 +359,16 @@ class ClaudeParser:
                     elif block.get("type") == "tool_result":
                         # Collect tool results
                         tool_content = block.get("content", "")
-                        tool_results.append(str(tool_content) if tool_content else "")
+                        if isinstance(tool_content, list):
+                            tool_texts = []
+                            for tool_block in tool_content:
+                                if isinstance(tool_block, dict) and tool_block.get("type") == "text":
+                                    tool_texts.append(tool_block.get("text", ""))
+                                else:
+                                    tool_texts.append(str(tool_block))
+                            tool_results.append("\n".join(text for text in tool_texts if text))
+                        else:
+                            tool_results.append(str(tool_content) if tool_content else "")
                 else:
                     texts.append(str(block))
 
