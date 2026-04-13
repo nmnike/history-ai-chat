@@ -249,6 +249,17 @@ def test_conversation_template_uses_or_multi_filter_logic():
     assert 'matchesRole || matchesTool || matchesMcp || matchesSkill' in response.text
 
 
+def test_conversation_template_prioritizes_skill_tool_result_scroll_target():
+    """Skill badge click should target tool_result launch line, not only tool_use bubble"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert "let lastSkillName = '';" in response.text
+    assert "const skillNameForFilter = isToolResult && isLastSkillTool ? lastSkillName : currentSkillNameForFilter;" in response.text
+    assert "bubble.dataset.role === 'tool_result'" in response.text
+    assert "const scrollContainer = document.getElementById('messages-container');" in response.text
+    assert "scrollContainer.scrollTo({" in response.text
+
+
 def test_conversation_template_renders_timing_and_tool_cards():
     """Conversation template should have timing and tool summary rendering code"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")

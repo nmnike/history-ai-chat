@@ -173,8 +173,9 @@ function renderMessages(messages) {
         return;
     }
 
-    // Track last tool_name to associate tool_result with its tool
+    // Track last tool_name/skill to associate tool_result with its source
     let lastToolName = '';
+    let lastSkillName = '';
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
@@ -201,18 +202,22 @@ function renderMessages(messages) {
             }
         }
 
-        // Extract Skill name for filtering from user message content
-        let skillNameForFilter = '';
+        // Extract Skill name for filtering from user message content or Skill tool invocations
+        let currentSkillNameForFilter = '';
         if (isUser && msg.content) {
             const skillMatch = msg.content.match(/<command-name>\/([^<]+)<\/command-name>/);
             if (skillMatch) {
-                skillNameForFilter = skillMatch[1];
+                currentSkillNameForFilter = skillMatch[1];
             }
         }
-        // Also extract Skill name from assistant tool_use with Skill tool
-        if (!isUser && msg.tool_name === 'Skill' && msg.tool_input && msg.tool_input.skill) {
-            skillNameForFilter = msg.tool_input.skill;
+        if (!isUser && (msg.tool_name === 'Skill' || msg.tool_name === 'functions.Skill') && msg.tool_input && msg.tool_input.skill) {
+            currentSkillNameForFilter = msg.tool_input.skill;
         }
+        if (currentSkillNameForFilter) {
+            lastSkillName = currentSkillNameForFilter;
+        }
+        const isLastSkillTool = toolNameForFilter === 'Skill' || toolNameForFilter === 'functions.Skill';
+        const skillNameForFilter = isToolResult && isLastSkillTool ? lastSkillName : currentSkillNameForFilter;
 
         const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
         const messageExpanded = isToolResult ? toolResultExpanded : true;
@@ -623,24 +628,38 @@ function applyFilters() {
 }
 
 function scrollToFirstUsage(name) {
-    // Find first message-bubble with matching data-mcp or data-skill
-    const bubbles = document.querySelectorAll('.message-bubble');
-    for (const bubble of bubbles) {
+    // Prefer tool_result launch line for skills, otherwise first matching bubble
+    const bubbles = Array.from(document.querySelectorAll('.message-bubble'));
+    const target = bubbles.find(bubble =>
+        bubble.dataset.skill === name && bubble.dataset.role === 'tool_result'
+    ) || bubbles.find(bubble => {
         const mcp = bubble.dataset.mcp;
         const skill = bubble.dataset.skill;
-        if (mcp === name || skill === name) {
-            // Scroll to element with offset for header
-            const headerOffset = 60;
-            const elementPosition = bubble.getBoundingClientRect().top + window.pageYOffset;
-            window.scrollTo({
-                top: elementPosition - headerOffset,
+        return mcp === name || skill === name;
+    });
+
+    if (target) {
+        const scrollContainer = document.getElementById('messages-container');
+        const headerOffset = 24;
+
+        if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const targetTop = scrollContainer.scrollTop + (targetRect.top - containerRect.top) - headerOffset;
+            scrollContainer.scrollTo({
+                top: Math.max(0, targetTop),
                 behavior: 'smooth'
             });
-            // Briefly highlight the element
-            bubble.classList.add('highlight-flash');
-            setTimeout(() => bubble.classList.remove('highlight-flash'), 1500);
-            return;
+        } else {
+            const elementPosition = target.getBoundingClientRect().top + window.pageYOffset;
+            window.scrollTo({
+                top: Math.max(0, elementPosition - 60),
+                behavior: 'smooth'
+            });
         }
+
+        target.classList.add('highlight-flash');
+        setTimeout(() => target.classList.remove('highlight-flash'), 1500);
     }
 }
 
