@@ -49,10 +49,10 @@ def test_export_markdown_stats_header():
 
     result = export_to_markdown(session)
 
-    # Check messages line format
+    # Check messages line format with tool breakdown
     assert "👤 1 user" in result  # 1 user message
     assert "🤖 2 assistant" in result  # 2 assistant messages
-    assert "🔧 1 tool calls" in result  # tool count
+    assert "🔧 1 tool calls (Read: 1)" in result  # tool count with breakdown
     # Check timing format
     assert "**Timing:**" in result
     assert "Start: 2026-03-17 14:30" in result
@@ -63,7 +63,7 @@ def test_export_markdown_stats_header():
 
 
 def test_export_markdown_tool_breakdown():
-    """Tool count shows total number of tool calls"""
+    """Tool breakdown shows multiple tools sorted by count"""
     messages = [
         make_message("user", "Hello"),
         make_message("assistant", "A", tool_name="Read"),
@@ -76,8 +76,8 @@ def test_export_markdown_tool_breakdown():
     session = make_session(messages=messages)
     result = export_to_markdown(session)
 
-    # 6 tool calls in messages line
-    assert "🔧 6 tool calls" in result
+    # 6 tool calls with breakdown, sorted by count descending
+    assert "🔧 6 tool calls (Read: 3, Bash: 2, Edit: 1)" in result
 
 
 def test_export_markdown_message_timestamp():
@@ -133,7 +133,7 @@ def test_export_markdown_tool_result_not_counted():
     result = export_to_markdown(session)
     assert "👤 1 user" in result  # tool_result excluded from user count
     assert "🤖 1 assistant" in result
-    assert "🔧 1 tool calls" in result  # tool_result not counted as tool call
+    assert "🔧 1 tool calls (Read: 1)" in result  # tool_result not counted as tool call
 
 
 def test_export_markdown_empty_tool_input():

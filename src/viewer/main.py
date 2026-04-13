@@ -804,10 +804,13 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
         lines.append(cost_line)
         lines.append(f"**Cost Details:** {' • '.join(cost_parts)}")
 
-    # Message stats
+    # Message stats with tool breakdown
     stats_parts = [f"👤 {user_count} user", f"🤖 {assistant_count} assistant"]
     if tool_calls > 0:
-        stats_parts.append(f"🔧 {tool_calls} tool calls")
+        tool_stats = f"🔧 {tool_calls} tool calls"
+        if tool_breakdown:
+            tool_stats += f" ({tool_breakdown})"
+        stats_parts.append(tool_stats)
     lines.append(f"**Messages:** {' • '.join(stats_parts)}")
 
     # MCP Tools
