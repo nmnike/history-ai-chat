@@ -141,6 +141,10 @@ def is_pricing_eligible_message(message) -> bool:
 
 def calculate_session_cost(session) -> dict:
     total_usd = 0.0
+    input_usd = 0.0
+    output_usd = 0.0
+    cache_read_usd = 0.0
+    cache_creation_usd = 0.0
     input_tokens = 0
     output_tokens = 0
     cache_read_tokens = 0
@@ -173,6 +177,10 @@ def calculate_session_cost(session) -> dict:
             continue
 
         total_usd += cost["total_usd"]
+        input_usd += cost["input_usd"]
+        output_usd += cost["output_usd"]
+        cache_read_usd += cost["cache_read_usd"]
+        cache_creation_usd += cost["cache_creation_usd"]
         priced_messages += 1
         priced_input_tokens += message_input_tokens
         priced_output_tokens += message_output_tokens
@@ -190,6 +198,10 @@ def calculate_session_cost(session) -> dict:
         "available": priced_messages > 0,
         "partial": priced_messages > 0 and unpriced_messages > 0,
         "total_usd": total_usd,
+        "input_usd": input_usd,
+        "output_usd": output_usd,
+        "cache_read_usd": cache_read_usd,
+        "cache_creation_usd": cache_creation_usd,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read_tokens,

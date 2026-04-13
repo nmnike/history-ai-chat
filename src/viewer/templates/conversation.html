@@ -1241,7 +1241,27 @@ function renderSessionHeaderMetrics(messages, session) {
 
     const cost = session.cost;
     if (cost && cost.available) {
-        parts.push(`<span class="badge bg-success-subtle text-success-emphasis border">$${cost.total_usd.toFixed(2)}</span>`);
+        const tooltipParts = [];
+        tooltipParts.push(`<div>Input: $${cost.input_usd.toFixed(2)} (${formatTokens(cost.priced_input_tokens)})</div>`);
+        tooltipParts.push(`<div>Output: $${cost.output_usd.toFixed(2)} (${formatTokens(cost.priced_output_tokens)})</div>`);
+        tooltipParts.push(`<div>Cache Read: $${cost.cache_read_usd.toFixed(2)} (${formatTokens(cost.priced_cache_read_tokens)})</div>`);
+        if (cost.cache_creation_usd > 0 || cost.priced_cache_creation_tokens > 0) {
+            tooltipParts.push(`<div>Cache Creation: $${cost.cache_creation_usd.toFixed(2)} (${formatTokens(cost.priced_cache_creation_tokens)})</div>`);
+        }
+        if (cost.models && cost.models.length > 0) {
+            tooltipParts.push(`<hr><div class="text-muted">Models: ${cost.models.join(', ')}</div>`);
+        }
+        if (cost.partial) {
+            tooltipParts.push(`<hr><div class="text-warning">Priced ${cost.priced_messages} of ${cost.priced_messages + cost.unpriced_messages} messages</div>`);
+        }
+        parts.push(`
+            <span class="token-badge-wrapper position-relative d-inline-block">
+                <span class="badge bg-success-subtle text-success-emphasis border">
+                    <i class="bi bi-currency-dollar"></i> ${cost.total_usd.toFixed(2)}
+                </span>
+                <span class="token-tooltip">${tooltipParts.join('')}</span>
+            </span>
+        `);
     }
 
     container.innerHTML = parts.join('');
