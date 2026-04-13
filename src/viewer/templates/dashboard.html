@@ -198,7 +198,7 @@ function loadFavorites() {
                     <a href="/conversation/${encodeURIComponent(fav.session_id)}?platform=${fav.platform}&project_id=${encodeURIComponent(fav.project || '')}" class="list-group-item list-group-item-action">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
-                                <div class="fw-bold">${escapeHtml(fav.project || 'Unknown')}</div>
+                                <div class="fw-bold">${escapeHtml(fav.project_name || fav.project || 'Unknown')}</div>
                                 <small class="text-muted">${preview}${preview.length >= 100 ? '...' : ''}</small>
                             </div>
                             <div class="text-end">

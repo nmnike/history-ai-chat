@@ -62,6 +62,13 @@ class ClaudeParser:
         import os
         self.projects_path = Path(projects_path or os.path.expanduser("~/.claude/projects"))
 
+    @staticmethod
+    def _format_project_display_name(project_id: str, project_path: str = "") -> str:
+        """Format Claude project id for display."""
+        if project_path:
+            return project_path
+        return project_id
+
     def parse_session(self, session_file: Path) -> tuple[list[Message], dict]:
         """Parse a single session JSONL file.
 
@@ -502,10 +509,12 @@ class ClaudeParser:
 
             sessions = list(project_dir.glob("*.jsonl"))
             if sessions:
-                # Use directory name as-is (project-id format like "A--ai-dev-history-ai-chat")
+                first_session_path = sessions[0]
+                messages, _ = self.parse_session(first_session_path)
+                project_path = messages[0].project_path if messages else ""
                 projects.append({
                     "id": project_dir.name,
-                    "name": project_dir.name,
+                    "name": self._format_project_display_name(project_dir.name, project_path),
                     "path": str(project_dir),
                     "session_count": len(sessions)
                 })

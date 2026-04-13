@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ project_id }} - History AI Chat{% endblock %}
+{% block title %}{{ project_name }} - History AI Chat{% endblock %}
 
 {% block nav_items %}
 <li class="nav-item">
@@ -14,7 +14,7 @@
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/">Home</a></li>
-                <li class="breadcrumb-item active">{{ project_id }}</li>
+                <li class="breadcrumb-item active">{{ project_name }}</li>
             </ol>
         </nav>
     </div>
@@ -23,7 +23,7 @@
 <div class="row">
     <div class="col-12">
         <h4>
-            <i class="bi bi-folder"></i> {{ project_id }}
+            <i class="bi bi-folder"></i> {{ project_name }}
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
             <span id="project-tokens" class="badge bg-success ms-1">-</span>
             <span id="sessions-count" class="badge bg-secondary rounded-pill ms-1">- sessions</span>

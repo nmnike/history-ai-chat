@@ -446,3 +446,25 @@ def test_claude_session_tracks_end_time(tmp_path):
     assert len(sessions) == 1
     assert sessions[0].created_at.isoformat() == "2026-04-10T10:00:00+00:00"
     assert sessions[0].ended_at.isoformat() == "2026-04-10T10:05:00+00:00"
+
+
+def test_get_projects_formats_windows_style_display_name(tmp_path):
+    project_dir = tmp_path / "C--AI-ai-dev-history-ai-chat"
+    project_dir.mkdir()
+    (project_dir / "sess-1.jsonl").write_text(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "Hi"},
+        "uuid": "msg-1",
+        "timestamp": "2026-04-10T10:00:00.000Z",
+        "sessionId": "sess-1",
+        "cwd": "C:\\AI\\ai_dev\\history-ai-chat"
+    }) + "\n")
+
+    parser = ClaudeParser(str(tmp_path))
+
+    assert parser.get_projects() == [{
+        "id": "C--AI-ai-dev-history-ai-chat",
+        "name": "C:\\AI\\ai_dev\\history-ai-chat",
+        "path": str(project_dir),
+        "session_count": 1,
+    }]
