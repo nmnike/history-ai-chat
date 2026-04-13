@@ -783,6 +783,9 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
     # Cost calculation
     cost = calculate_session_cost(session)
 
+    # MCP and Skills classification
+    mcps, skills = classify_tools(session)
+
     # Timing
     local_created = to_local_datetime(session.created_at)
     created_str = local_created.strftime("%Y-%m-%d %H:%M") if local_created else "Unknown"
@@ -859,6 +862,16 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
             tool_stats += f" ({tool_breakdown})"
         stats_parts.append(tool_stats)
     lines.append(f"**Messages:** {' • '.join(stats_parts)}")
+
+    # MCP Tools (separate section)
+    if mcps:
+        mcp_str = ", ".join(f"{m['name']} ({m['count']})" for m in mcps)
+        lines.append(f"**MCP Tools:** {mcp_str}")
+
+    # Skills (separate section)
+    if skills:
+        skill_str = ", ".join(f"{s['name']} ({s['count']})" for s in skills)
+        lines.append(f"**Skills:** {skill_str}")
 
     lines.append("\n---\n")
 
