@@ -131,6 +131,7 @@ function loadSessions() {
                 const tokensBadge = (s.input_tokens || s.output_tokens)
                     ? `<span class="badge bg-success">${formatTokens(s.input_tokens || 0)}/${formatTokens(s.output_tokens || 0)}</span>`
                     : '';
+                const costBadge = formatCost(s.cost);
                 const modelBadge = s.model
                     ? `<span class="badge bg-dark ms-1" title="Model"><i class="bi bi-cpu"></i> ${escapeHtml(s.model)}</span>`
                     : '';
@@ -148,6 +149,7 @@ function loadSessions() {
                             <div class="text-end">
                                 ${modelBadge}${effortBadge}
                                 ${tokensBadge}
+                                ${costBadge}
                                 <span class="badge bg-secondary rounded-pill ms-1">${s.message_count} msgs</span>
                             </div>
                         </div>
@@ -166,6 +168,11 @@ function formatTokens(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return n.toString();
+}
+
+function formatCost(cost) {
+    if (!cost || !cost.available) return '';
+    return `<span class="badge bg-success-subtle text-success-emphasis border ms-1">$${cost.total_usd.toFixed(2)}</span>`;
 }
 
 function escapeHtml(text) {

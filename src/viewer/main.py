@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from .parsers import ClaudeParser, CodexParser, Session, Message
 from .db.cache import CacheDB
+from .pricing import calculate_session_cost
 
 
 # Initialize parsers from environment or defaults
@@ -153,6 +154,7 @@ def session_to_dict(session: Session, platform: str) -> dict:
     ended_at = get_ended_at(session)
     duration_seconds = get_duration_seconds(session)
     mcps, skills = classify_tools(session)
+    cost = calculate_session_cost(session)
 
     return {
         "id": session.id,
@@ -172,7 +174,8 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "cache_creation_tokens": cache_creation_tokens,
         "model": session.model,
         "effort": session.effort,
-        "custom_title": session.custom_title
+        "custom_title": session.custom_title,
+        "cost": cost,
     }
 
 

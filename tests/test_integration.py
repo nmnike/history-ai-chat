@@ -59,6 +59,7 @@ def test_project_page_defaults_to_last_7_days():
     response = client.get("/project/test-project")
     assert response.status_code == 200
     assert 'const initialDateFilter = "week";' in response.text
+    assert 'function formatCost(cost)' in response.text
 
 
 def test_project_page_renders_display_name_for_claude_project(monkeypatch):
@@ -133,6 +134,19 @@ def test_api_sessions_defaults_to_last_7_days(monkeypatch):
     """Sessions API should exclude sessions older than 7 days by default"""
     recent_session = make_session("recent", 2)
     old_session = make_session("old", 9)
+    recent_session.messages = [
+        Message(
+            role="assistant",
+            content="answer",
+            uuid="1",
+            timestamp=recent_session.created_at,
+            session_id="recent",
+            project_path="/tmp/test-project",
+            model="Sonnet 4.6",
+            input_tokens=1000,
+            output_tokens=100,
+        )
+    ]
 
     class StubClaudeParser:
         def get_sessions(self, project_id):
@@ -145,6 +159,8 @@ def test_api_sessions_defaults_to_last_7_days(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert [session["id"] for session in data["sessions"]] == ["recent"]
+    assert data["sessions"][0]["cost"]["available"] is True
+    assert round(data["sessions"][0]["cost"]["total_usd"], 6) == 0.0045
 
 
 def test_favorites_api():
@@ -475,3 +491,267 @@ def test_api_conversation_parses_skills_from_tool_result_launching_skill(monkeyp
     assert len(skills) == 2
     assert {"name": "superpowers-brainstorming", "count": 1} in skills
     assert {"name": "superpowers-test-driven-development", "count": 1} in skills
+
+
+def test_api_conversation_returns_real_cost(monkeypatch):
+    base = datetime(2026, 4, 13, 12, 0, 0)
+    session = Session(
+        id="sess-cost",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="Claude answer",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-cost",
+                project_path="/tmp/test-project",
+                model="Sonnet 4.6",
+                input_tokens=1000,
+                output_tokens=100,
+                cache_read_tokens=200,
+                cache_creation_tokens=50,
+            ),
+            Message(
+                role="assistant",
+                content="OpenAI answer",
+                uuid="2",
+                timestamp=base + timedelta(minutes=1),
+                session_id="sess-cost",
+                project_path="/tmp/test-project",
+                model="gpt-5.4",
+                input_tokens=2000,
+                output_tokens=200,
+                cache_read_tokens=100,
+            ),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            assert project_id == "test-project"
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-cost?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    cost = response.json()["session"]["cost"]
+    assert cost["available"] is True
+    assert cost["input_tokens"] == 3000
+    assert cost["output_tokens"] == 300
+    assert cost["cache_read_tokens"] == 300
+    assert cost["cache_creation_tokens"] == 50
+    assert cost["providers"] == ["claude", "openai"]
+    assert cost["models"] == ["Sonnet 4.6", "gpt-5.4"]
+    assert round(cost["total_usd"], 6) == 0.008761
+
+
+
+def test_api_conversation_returns_real_cost_for_openai_quality_suffix(monkeypatch):
+    base = datetime(2026, 4, 13, 12, 0, 0)
+    session = Session(
+        id="sess-openai-suffix",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="OpenAI answer",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-openai-suffix",
+                project_path="/tmp/test-project",
+                model="gpt-5.4(high)",
+                input_tokens=2000,
+                output_tokens=200,
+                cache_read_tokens=100,
+            ),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-openai-suffix?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    cost = response.json()["session"]["cost"]
+    assert cost["available"] is True
+    assert cost["providers"] == ["openai"]
+    assert cost["models"] == ["gpt-5.4"]
+    assert round(cost["total_usd"], 6) == 0.004013
+
+
+def test_conversation_template_contains_header_metrics_ui():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'id="session-meta-badges"' in response.text
+    assert 'id="session-header-metrics"' in response.text
+    assert 'renderSessionHeaderMetrics(messages, session);' in response.text
+    assert 'function renderSessionHeaderMetrics(messages, session)' in response.text
+    assert 'token-badge-wrapper position-relative d-inline-block' in response.text
+    assert 'token-tooltip' in response.text
+    assert "cost.total_usd.toFixed(2)" in response.text
+    assert "<i class=\"bi bi-cpu\"></i> ${inputK} in / ${outputK} out" in response.text
+    assert 'id="session-cost"' not in response.text
+    assert '<i class="bi bi-cash-coin"></i>' not in response.text
+    assert 'Real cost' not in response.text
+    assert 'Partial cost' not in response.text
+    assert 'unpriced_messages' not in response.text
+
+
+
+def test_api_conversation_returns_unavailable_cost_for_unknown_model(monkeypatch):
+    base = datetime(2026, 4, 13, 12, 0, 0)
+    session = Session(
+        id="sess-unknown",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="unknown",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-unknown",
+                project_path="/tmp/test-project",
+                model="mystery-model",
+                input_tokens=500,
+                output_tokens=50,
+            )
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-unknown?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert response.json()["session"]["cost"]["available"] is False
+
+
+
+def test_api_conversation_marks_partial_cost_for_mixed_models(monkeypatch):
+    base = datetime(2026, 4, 13, 12, 0, 0)
+    session = Session(
+        id="sess-partial",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="Claude answer",
+                uuid="1",
+                timestamp=base,
+                session_id="sess-partial",
+                project_path="/tmp/test-project",
+                model="Sonnet 4.6",
+                input_tokens=1000,
+                output_tokens=100,
+            ),
+            Message(
+                role="assistant",
+                content="Unknown answer",
+                uuid="2",
+                timestamp=base + timedelta(minutes=1),
+                session_id="sess-partial",
+                project_path="/tmp/test-project",
+                model="mystery-model",
+                input_tokens=2000,
+                output_tokens=200,
+            ),
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-partial?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    cost = response.json()["session"]["cost"]
+    assert cost["available"] is True
+    assert cost["partial"] is True
+    assert cost["priced_messages"] == 1
+    assert cost["unpriced_messages"] == 1
+    assert cost["priced_input_tokens"] == 1000
+    assert cost["priced_output_tokens"] == 100
+
+
+
+def test_api_conversation_does_not_count_user_and_system_without_usage_as_unpriced(monkeypatch):
+    base = datetime(2026, 4, 13, 12, 0, 0)
+    session = Session(
+        id="sess-codex-like",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="system",
+                content="instructions",
+                uuid="sys1",
+                timestamp=base,
+                session_id="sess-codex-like",
+                project_path="/tmp/test-project",
+            ),
+            Message(
+                role="user",
+                content="question",
+                uuid="user1",
+                timestamp=base + timedelta(seconds=1),
+                session_id="sess-codex-like",
+                project_path="/tmp/test-project",
+            ),
+            Message(
+                role="assistant",
+                content="OpenAI answer",
+                uuid="a1",
+                timestamp=base + timedelta(seconds=2),
+                session_id="sess-codex-like",
+                project_path="/tmp/test-project",
+                model="gpt-5.4",
+                input_tokens=1000,
+                output_tokens=100,
+            ),
+        ],
+    )
+
+    class StubCodexParser:
+        def get_sessions(self):
+            return [session]
+
+    monkeypatch.setattr("viewer.main.codex_parser", StubCodexParser())
+
+    response = client.get("/api/conversation/sess-codex-like?project_id=test-project&platform=codex")
+    assert response.status_code == 200
+
+    cost = response.json()["session"]["cost"]
+    assert cost["available"] is True
+    assert cost["partial"] is False
+    assert cost["priced_messages"] == 1
+    assert cost["unpriced_messages"] == 0
+
+
+def test_conversation_template_uses_session_cost_in_header_metrics():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'const cost = session.cost;' in response.text
+    assert 'cost && cost.available' in response.text
+    assert 'cost.total_usd.toFixed(2)' in response.text

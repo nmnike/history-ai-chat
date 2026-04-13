@@ -23,18 +23,21 @@
 
 <div class="row mb-3">
     <div class="col-md-8">
-        <h5 class="mb-2">
+        <h5 class="mb-2 d-flex flex-wrap align-items-center gap-1">
             <i class="bi bi-chat-dots"></i>
             <span id="session-title">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
             <span id="session-meta-badges"></span>
+            <span id="session-header-metrics" class="d-inline-flex flex-wrap align-items-center gap-1"></span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
         </h5>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <small class="text-muted" id="session-date"></small>
             <span id="session-timing" class="session-timing"></span>
         </div>
-        <div id="session-stats" class="d-flex flex-wrap gap-1 mt-2"></div>
+        <div class="d-flex flex-wrap align-items-center gap-1 mt-2">
+            <div id="session-stats" class="d-flex flex-wrap gap-1"></div>
+        </div>
         <div id="session-tools-summary" class="session-tools-summary mt-2"></div>
     </div>
     <div class="col-md-4 text-end">
@@ -157,6 +160,7 @@ function loadConversation() {
             updateSessionStats(messages);
             renderSessionTiming(session);
             renderToolSummary(session);
+            renderSessionHeaderMetrics(messages, session);
         })
         .catch(err => {
             console.error('Failed to load conversation:', err);
@@ -1009,26 +1013,6 @@ function updateSessionStats(messages) {
             });
     }
 
-    // Add tokens badge with hover breakdown
-    const totalTokens = stats.tokens.input + stats.tokens.output + stats.tokens.cache_read + stats.tokens.cache_creation;
-    if (totalTokens > 0) {
-        const inputK = formatTokens(stats.tokens.input);
-        const outputK = formatTokens(stats.tokens.output);
-        html += `<span class="token-badge-wrapper position-relative d-inline-block">
-            <span class="badge bg-success">
-                <i class="bi bi-cpu"></i> ${inputK} in / ${outputK} out
-            </span>
-            <span class="token-tooltip">
-                <div>Input: ${stats.tokens.input.toLocaleString()}</div>
-                <div>Output: ${stats.tokens.output.toLocaleString()}</div>
-                <div>Cache Read: ${stats.tokens.cache_read.toLocaleString()}</div>
-                <div>Cache Create: ${stats.tokens.cache_creation.toLocaleString()}</div>
-                <hr class="my-1">
-                <div><strong>Total: ${totalTokens.toLocaleString()}</strong></div>
-            </span>
-        </span>`;
-    }
-
     container.innerHTML = html;
 }
 
@@ -1219,6 +1203,48 @@ function renderToolSummary(session) {
     }
 
     container.innerHTML = sections.join('');
+}
+
+function renderSessionHeaderMetrics(messages, session) {
+    const container = document.getElementById('session-header-metrics');
+    if (!container) return;
+
+    const totals = messages.reduce((acc, msg) => {
+        acc.input += msg.input_tokens || 0;
+        acc.output += msg.output_tokens || 0;
+        acc.cacheRead += msg.cache_read_tokens || 0;
+        acc.cacheCreation += msg.cache_creation_tokens || 0;
+        return acc;
+    }, { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 });
+
+    const parts = [];
+    const totalTokens = totals.input + totals.output + totals.cacheRead + totals.cacheCreation;
+    if (totalTokens > 0) {
+        const inputK = formatTokens(totals.input);
+        const outputK = formatTokens(totals.output);
+        parts.push(`
+            <span class="token-badge-wrapper position-relative d-inline-block">
+                <span class="badge bg-success">
+                    <i class="bi bi-cpu"></i> ${inputK} in / ${outputK} out
+                </span>
+                <span class="token-tooltip">
+                    <div>Input: ${totals.input.toLocaleString()}</div>
+                    <div>Output: ${totals.output.toLocaleString()}</div>
+                    <div>Cache Read: ${totals.cacheRead.toLocaleString()}</div>
+                    <div>Cache Create: ${totals.cacheCreation.toLocaleString()}</div>
+                    <hr class="my-1">
+                    <div><strong>Total: ${totalTokens.toLocaleString()}</strong></div>
+                </span>
+            </span>
+        `);
+    }
+
+    const cost = session.cost;
+    if (cost && cost.available) {
+        parts.push(`<span class="badge bg-success-subtle text-success-emphasis border">$${cost.total_usd.toFixed(2)}</span>`);
+    }
+
+    container.innerHTML = parts.join('');
 }
 
 function renderToolGroup(title, icon, items, cssClass) {
