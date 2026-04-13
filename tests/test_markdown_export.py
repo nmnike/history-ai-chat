@@ -142,6 +142,23 @@ def test_export_markdown_empty_tool_input():
     assert "**Tool: Bash**\n" in result  # No JSON block after tool name
 
 
+def test_export_markdown_compacted_label():
+    """Compaction events should have a dedicated label in export."""
+    messages = [
+        make_message(
+            "system",
+            "Codex compacted earlier context to save space in the active session.",
+            message_type="compacted",
+            timestamp=datetime(2026, 3, 17, 14, 30, 0)
+        ),
+    ]
+    session = make_session(messages=messages)
+
+    result = export_to_markdown(session)
+
+    assert "### Context Compacted • 14:30:00" in result
+
+
 def test_to_local_datetime_utc_conversion():
     """UTC datetime should be converted to local timezone"""
     # Create a UTC datetime

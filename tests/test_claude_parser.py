@@ -17,7 +17,7 @@ def test_parse_user_message(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].role == "user"
@@ -44,7 +44,7 @@ def test_parse_user_message_with_list_content(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert "Check this file" in messages[0].content
@@ -69,7 +69,7 @@ def test_parse_assistant_message(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].role == "assistant"
@@ -96,7 +96,7 @@ def test_parse_assistant_message_with_thinking(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].thinking_text == "Let me think about this..."
@@ -123,7 +123,7 @@ def test_parse_assistant_message_with_tool_use(tmp_path):
     }) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 1
     assert messages[0].message_type == "tool_use"
@@ -163,7 +163,7 @@ def test_parse_multiple_messages(tmp_path):
     session_file.write_text("\n".join(lines) + "\n")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 3
     assert messages[0].role == "user"
@@ -177,7 +177,7 @@ def test_parse_empty_file(tmp_path):
     session_file.write_text("")
 
     parser = ClaudeParser()
-    messages = parser.parse_session(session_file)
+    messages, _ = parser.parse_session(session_file)
 
     assert len(messages) == 0
 
@@ -197,3 +197,252 @@ def test_parse_timestamp_various_formats(tmp_path):
     # None
     ts3 = parser._parse_timestamp(None)
     assert ts3 is None
+
+
+def test_parse_compact_boundary_with_summary(tmp_path):
+    """compact_boundary + summary user message → single compacted message."""
+    session_file = tmp_path / "test-session.jsonl"
+    lines = [
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "Hello"},
+            "uuid": "msg-1", "timestamp": "2026-03-18T22:00:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi!"}]},
+            "uuid": "msg-2", "timestamp": "2026-03-18T22:01:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "system", "subtype": "compact_boundary",
+            "content": "Conversation compacted",
+            "compactMetadata": {"trigger": "auto", "preTokens": 167648},
+            "uuid": "compact-1", "timestamp": "2026-03-18T22:46:39.715Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "This session is being continued from a previous conversation.\n\nSummary:\n1. We discussed X."},
+            "uuid": "msg-3", "timestamp": "2026-03-18T22:46:40.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Continuing..."}]},
+            "uuid": "msg-4", "timestamp": "2026-03-18T22:47:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+    ]
+    session_file.write_text("\n".join(lines) + "\n")
+
+    parser = ClaudeParser()
+    messages, _ = parser.parse_session(session_file)
+
+    # user + assistant + compacted + assistant (summary absorbed into compacted)
+    assert len(messages) == 4
+    assert messages[0].role == "user"
+    assert messages[1].role == "assistant"
+
+    compacted = messages[2]
+    assert compacted.role == "system"
+    assert compacted.message_type == "compacted"
+    assert "168K tokens" in compacted.content
+    assert "auto" in compacted.content
+    assert "2 messages hidden" in compacted.content
+    assert "This session is being continued" in compacted.content
+
+    assert messages[3].role == "assistant"
+    assert messages[3].content == "Continuing..."
+
+
+def test_parse_compact_boundary_without_summary(tmp_path):
+    """compact_boundary followed by a normal user message (not a summary)."""
+    session_file = tmp_path / "test-session.jsonl"
+    lines = [
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "First"},
+            "uuid": "msg-1", "timestamp": "2026-03-18T22:00:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "system", "subtype": "compact_boundary",
+            "content": "Conversation compacted",
+            "compactMetadata": {"trigger": "manual", "preTokens": 50000},
+            "uuid": "compact-1", "timestamp": "2026-03-18T22:10:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "A normal follow-up question"},
+            "uuid": "msg-2", "timestamp": "2026-03-18T22:11:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+    ]
+    session_file.write_text("\n".join(lines) + "\n")
+
+    parser = ClaudeParser()
+    messages, _ = parser.parse_session(session_file)
+
+    # user + compacted (no summary) + user
+    assert len(messages) == 3
+    compacted = messages[1]
+    assert compacted.message_type == "compacted"
+    assert "50K tokens" in compacted.content
+    assert "manual" in compacted.content
+    assert "1 messages hidden" in compacted.content
+
+    assert messages[2].role == "user"
+    assert messages[2].content == "A normal follow-up question"
+
+
+def test_format_compact_header():
+    """Header formatting for various token sizes."""
+    assert ClaudeParser._format_compact_header(167648, "auto", 42) == \
+        "Compacted at 168K tokens · auto · 42 messages hidden"
+    assert ClaudeParser._format_compact_header(1_500_000, "manual", 0) == \
+        "Compacted at 1.5M tokens · manual"
+    assert ClaudeParser._format_compact_header(500, "auto", 5) == \
+        "Compacted at 500 tokens · auto · 5 messages hidden"
+
+
+def test_parse_custom_title(tmp_path):
+    """Test that custom-title is extracted into session metadata"""
+    import json
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({"type": "user", "uuid": "u1", "timestamp": "2026-03-17T10:00:00Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"role": "user", "content": "Hello"}}) + "\n" +
+        json.dumps({"type": "custom-title", "customTitle": "My Session",
+                    "sessionId": "s1"}) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["custom_title"] == "My Session"
+
+
+def test_parse_assistant_model(tmp_path):
+    """Test that model is extracted from assistant messages, synthetic filtered, alias applied"""
+    import json
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({"type": "assistant", "uuid": "a1", "timestamp": "2026-03-17T10:00:00Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"id": "msg1", "role": "assistant", "model": "claude-opus-4-6",
+                                "content": [{"type": "text", "text": "Hi"}],
+                                "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n" +
+        json.dumps({"type": "assistant", "uuid": "a2", "timestamp": "2026-03-17T10:00:01Z",
+                    "sessionId": "s1", "cwd": "/p",
+                    "message": {"id": "msg2", "role": "assistant", "model": "<synthetic>",
+                                "content": [{"type": "text", "text": "Think"}],
+                                "usage": {"input_tokens": 0, "output_tokens": 0}}}) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["model"] == "Opus 4.6"
+    assistant_msgs = [m for m in messages if m.role == "assistant" and m.model]
+    assert any(m.model == "Opus 4.6" for m in assistant_msgs)
+    # synthetic should be filtered
+    assert not any(m.model == "<synthetic>" for m in messages)
+
+
+def test_parse_effort_from_model_command(tmp_path):
+    """Test that effort is extracted from /model command output in user events"""
+    session_file = tmp_path / "session.jsonl"
+    # Real format: content is a string with <local-command-stdout> tag and ANSI codes
+    model_command_event = {
+        "type": "user",
+        "uuid": "u2",
+        "timestamp": "2026-03-27T10:00:00Z",
+        "sessionId": "s1",
+        "cwd": "/p",
+        "message": {
+            "role": "user",
+            "content": "<local-command-stdout>Set model to \x1b[1mSonnet 4.6 (default)\x1b[22m with high effort</local-command-stdout>"
+        }
+    }
+    assistant_event = {
+        "type": "assistant",
+        "uuid": "a1",
+        "timestamp": "2026-03-27T10:00:01Z",
+        "sessionId": "s1",
+        "cwd": "/p",
+        "message": {
+            "id": "msg1",
+            "role": "assistant",
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "Response after effort set"}],
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }
+    }
+    session_file.write_text(
+        json.dumps(model_command_event) + "\n" +
+        json.dumps(assistant_event) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["effort"] == "high"
+    assistant_msgs = [m for m in messages if m.role == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0].effort == "high"
+
+
+def test_parse_effort_none_when_no_model_command(tmp_path):
+    """Test that effort is None when no /model command is present"""
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        json.dumps({
+            "type": "assistant", "uuid": "a1", "timestamp": "2026-03-27T10:00:00Z",
+            "sessionId": "s1", "cwd": "/p",
+            "message": {"id": "msg1", "role": "assistant", "model": "claude-sonnet-4-6",
+                        "content": [{"type": "text", "text": "Hi"}],
+                        "usage": {"input_tokens": 5, "output_tokens": 3}}
+        }) + "\n"
+    )
+
+    parser = ClaudeParser()
+    messages, metadata = parser.parse_session(session_file)
+
+    assert metadata["effort"] is None
+    assert all(m.effort is None for m in messages if m.role == "assistant")
+
+
+def test_claude_session_tracks_end_time(tmp_path):
+    """Test that Session has created_at and ended_at from message timestamps"""
+    session_file = tmp_path / "test-session.jsonl"
+    lines = [
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "First"},
+            "uuid": "msg-1", "timestamp": "2026-04-10T10:00:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+        json.dumps({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Response"}]},
+            "uuid": "msg-2", "timestamp": "2026-04-10T10:05:00.000Z",
+            "sessionId": "sess-1", "cwd": "/project"
+        }),
+    ]
+    session_file.write_text("\n".join(lines) + "\n")
+
+    # Create project directory structure
+    project_dir = tmp_path / "demo-project"
+    project_dir.mkdir()
+    session_file.rename(project_dir / session_file.name)
+
+    parser = ClaudeParser(str(tmp_path))
+    sessions = parser.get_sessions("demo-project")
+
+    assert len(sessions) == 1
+    assert sessions[0].created_at.isoformat() == "2026-04-10T10:00:00+00:00"
+    assert sessions[0].ended_at.isoformat() == "2026-04-10T10:05:00+00:00"

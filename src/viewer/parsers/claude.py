@@ -1,22 +1,33 @@
 # src/viewer/parsers/claude.py
 """Parser for Claude Code conversation history"""
 import json
+import re
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime
 
 
+def model_alias(model: str) -> Optional[str]:
+    """Convert full model ID to short alias, e.g. 'claude-sonnet-4-6' -> 'Sonnet 4.6'"""
+    if not model:
+        return None
+    m = re.match(r"claude-(\w+)-(\d+)[-.](\d+)", model, re.IGNORECASE)
+    if m:
+        return f"{m.group(1).capitalize()} {m.group(2)}.{m.group(3)}"
+    return model
+
+
 @dataclass
 class Message:
     """Represents a single message in a conversation"""
-    role: str  # user, assistant
+    role: str  # user, assistant, system, tool_result
     content: str
     uuid: str
     timestamp: datetime
     session_id: str
     project_path: str
-    message_type: str = "text"  # text, thinking, tool_use, tool_result
+    message_type: str = "text"  # text, thinking, tool_use, tool_result, compacted
     tool_name: Optional[str] = None
     tool_input: Optional[dict] = None
     thinking_text: Optional[str] = None
@@ -24,6 +35,9 @@ class Message:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
+    hidden_messages: Optional[list] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
 
 
 @dataclass
@@ -35,6 +49,10 @@ class Session:
     messages: list[Message]
     first_message: Optional[str] = None
     created_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
+    custom_title: Optional[str] = None
 
 
 class ClaudeParser:
@@ -44,9 +62,13 @@ class ClaudeParser:
         import os
         self.projects_path = Path(projects_path or os.path.expanduser("~/.claude/projects"))
 
-    def parse_session(self, session_file: Path) -> list[Message]:
-        """Parse a single session JSONL file"""
+    def parse_session(self, session_file: Path) -> tuple[list[Message], dict]:
+        """Parse a single session JSONL file.
+
+        Returns (messages, metadata) where metadata contains session-level info.
+        """
         raw_lines = []
+        metadata = {"custom_title": None, "models": set(), "efforts": set()}
 
         with open(session_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -61,38 +83,89 @@ class ClaudeParser:
         # Process and merge streaming chunks
         messages = []
         pending_assistant_chunks = {}  # message_id -> list of chunks
+        pending_compact = None  # compact_boundary data awaiting summary
+        current_effort = None  # tracks latest effort from /model commands
 
         for data in raw_lines:
             msg_type = data.get("type")
+
+            if msg_type == "system" and data.get("subtype") == "compact_boundary":
+                messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+                pending_assistant_chunks = {}
+                pending_compact = {
+                    "data": data,
+                    "messages_before": len(messages),
+                }
+                continue
+
+            if msg_type == "custom-title":
+                metadata["custom_title"] = data.get("customTitle")
 
             if msg_type == "assistant":
                 # Group by message.id for streaming chunks
                 message = data.get("message", {})
                 msg_id = message.get("id", "")
+                model = message.get("model")
+                if model and model != "<synthetic>":
+                    metadata["models"].add(model_alias(model))
 
                 if msg_id:
                     if msg_id not in pending_assistant_chunks:
                         pending_assistant_chunks[msg_id] = []
                     pending_assistant_chunks[msg_id].append(data)
                 else:
-                    # No message.id, process directly
                     msg = self._parse_assistant_message(data)
                     if msg:
+                        msg.effort = current_effort
                         messages.append(msg)
 
             elif msg_type == "user":
-                # Flush any pending assistant chunks before user message
-                messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+                # Flush pending assistant chunks with the current (old) effort
+                flushed = self._flush_assistant_chunks(pending_assistant_chunks)
+                for msg in flushed:
+                    msg.effort = current_effort
+                messages.extend(flushed)
                 pending_assistant_chunks = {}
+
+                # Check if this user message is a compaction summary
+                if pending_compact is not None:
+                    summary_text = self._extract_user_text(data)
+                    if summary_text.startswith("This session is being continued"):
+                        messages.append(self._build_compacted_message(
+                            pending_compact, summary_text, data
+                        ))
+                        pending_compact = None
+                        continue
+                    # Not a summary — emit compacted marker without summary,
+                    # then process this user message normally
+                    messages.append(self._build_compacted_message(
+                        pending_compact, "", data
+                    ))
+                    pending_compact = None
+
+                # Update effort from /model command — applies to subsequent assistant messages
+                effort_from_cmd = self._extract_effort_from_user_event(data)
+                if effort_from_cmd is not None:
+                    current_effort = effort_from_cmd
+                    if current_effort:
+                        metadata["efforts"].add(current_effort)
 
                 msg = self._parse_user_message(data)
                 if msg:
                     messages.append(msg)
 
+        # Flush remaining
+        if pending_compact is not None:
+            messages.append(self._build_compacted_message(pending_compact, "", raw_lines[-1] if raw_lines else {}))
         # Flush remaining assistant chunks
-        messages.extend(self._flush_assistant_chunks(pending_assistant_chunks))
+        flushed = self._flush_assistant_chunks(pending_assistant_chunks)
+        for msg in flushed:
+            msg.effort = current_effort
+        messages.extend(flushed)
 
-        return messages
+        metadata["model"] = ", ".join(sorted(metadata["models"])) or None
+        metadata["effort"] = ", ".join(sorted(metadata["efforts"])) or None
+        return messages, metadata
 
     def _flush_assistant_chunks(self, chunks: dict) -> list[Message]:
         """Merge streaming chunks into single messages"""
@@ -131,6 +204,8 @@ class ClaudeParser:
         timestamp = None
         uuid = ""
 
+        msg_model = None
+
         for chunk in chunks:
             message = chunk.get("message", {})
             content_blocks = message.get("content", [])
@@ -149,6 +224,10 @@ class ClaudeParser:
                 project_path = chunk.get("cwd", "")
                 timestamp = self._parse_timestamp(chunk.get("timestamp"))
                 uuid = chunk.get("uuid", "")
+
+            model = message.get("model")
+            if model and model != "<synthetic>":
+                msg_model = model_alias(model)
 
             # Merge content blocks
             if isinstance(content_blocks, list):
@@ -188,8 +267,62 @@ class ClaudeParser:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens
+            cache_creation_tokens=cache_creation_tokens,
+            model=msg_model
         )
+
+    def _extract_user_text(self, data: dict) -> str:
+        """Extract plain text from a user-type JSONL entry."""
+        message = data.get("message", {})
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    parts.append(block)
+            return "\n".join(parts)
+        return str(content)
+
+    def _build_compacted_message(self, compact_info: dict, summary: str, context_data: dict) -> Message:
+        """Create a unified compacted Message from compact_boundary + optional summary."""
+        boundary = compact_info["data"]
+        metadata = boundary.get("compactMetadata") or {}
+        pre_tokens = metadata.get("preTokens") or 0
+        trigger = metadata.get("trigger") or "auto"
+        messages_before = compact_info["messages_before"]
+
+        header = self._format_compact_header(pre_tokens, trigger, messages_before)
+        content = f"{header}\n\n{summary}" if summary else header
+
+        return Message(
+            role="system",
+            content=content,
+            uuid=boundary.get("uuid", ""),
+            timestamp=self._parse_timestamp(boundary.get("timestamp")),
+            session_id=boundary.get("sessionId") or context_data.get("sessionId", ""),
+            project_path=boundary.get("cwd") or context_data.get("cwd", ""),
+            message_type="compacted"
+        )
+
+    @staticmethod
+    def _format_compact_header(pre_tokens: int, trigger: str, messages_before: int) -> str:
+        """Build the short header line for a compaction event."""
+        if pre_tokens >= 1_000_000:
+            tokens_str = f"{pre_tokens / 1_000_000:.1f}M"
+        elif pre_tokens >= 1_000:
+            tokens_str = f"{pre_tokens / 1_000:.0f}K"
+        else:
+            tokens_str = str(pre_tokens)
+
+        parts = [f"Compacted at {tokens_str} tokens"]
+        parts.append(trigger)
+        if messages_before > 0:
+            parts.append(f"{messages_before} messages hidden")
+        return " · ".join(parts)
 
     def _parse_message(self, data: dict) -> Optional[Message]:
         """Parse a single message from JSONL"""
@@ -263,6 +396,9 @@ class ClaudeParser:
         cache_read_tokens = usage.get("cache_read_input_tokens", 0) or 0
         cache_creation_tokens = usage.get("cache_creation_input_tokens", 0) or 0
 
+        raw_model = message.get("model")
+        msg_model = model_alias(raw_model) if raw_model and raw_model != "<synthetic>" else None
+
         if not isinstance(content_blocks, list):
             return Message(
                 role="assistant",
@@ -312,8 +448,33 @@ class ClaudeParser:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens
+            cache_creation_tokens=cache_creation_tokens,
+            model=msg_model
         )
+
+    def _extract_effort_from_user_event(self, data: dict) -> Optional[str]:
+        """Extract effort from /model command output in user events.
+
+        Content format: "<local-command-stdout>Set model to X with Y effort</local-command-stdout>"
+        Returns effort string (e.g. "high") if found, "" if model set without effort,
+        or None if this event has no /model command output.
+        """
+        content = data.get("message", {}).get("content", "")
+        if not isinstance(content, str):
+            return None
+
+        # Content must be exactly the tag (no surrounding text)
+        tag_match = re.fullmatch(r"\s*<local-command-stdout>(.*?)</local-command-stdout>\s*", content, re.DOTALL)
+        if not tag_match:
+            return None
+
+        text = re.sub(r"\x1b\[[0-9;]*m", "", tag_match.group(1)).strip()
+        m = re.search(r"Set model to .+? with (\w+) effort", text)
+        if m:
+            return m.group(1)
+        if re.search(r"Set model to ", text):
+            return ""
+        return None
 
     def _parse_timestamp(self, ts) -> Optional[datetime]:
         """Parse timestamp from various formats"""
@@ -363,15 +524,21 @@ class ClaudeParser:
             if session_file.name.startswith("agent-"):
                 continue
 
-            messages = self.parse_session(session_file)
+            messages, metadata = self.parse_session(session_file)
             if messages:
+                first_user = next((m for m in messages if m.role == "user"), None)
+                default_preview = first_user.content[:100] if first_user else (messages[0].content[:100] if messages else None)
                 session = Session(
                     id=session_file.stem,
                     project_path=str(project_path),
                     project_name=project_id,
                     messages=messages,
-                    first_message=messages[0].content[:100] if messages else None,
-                    created_at=messages[0].timestamp if messages else None
+                    first_message=metadata.get("custom_title") or default_preview,
+                    created_at=messages[0].timestamp if messages else None,
+                    ended_at=messages[-1].timestamp if messages else None,
+                    model=metadata.get("model"),
+                    effort=metadata.get("effort"),
+                    custom_title=metadata.get("custom_title")
                 )
                 sessions.append(session)
 

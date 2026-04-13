@@ -10,7 +10,15 @@
     --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
     --user-bg: #1e3a5f;
     --assistant-bg: #252542;
-    --thinking-bg: #3d2f1f;
+    --compacted-bg: rgba(148, 163, 184, 0.14);
+    --compacted-border: #94a3b8;
+    --thinking-bg: rgba(43, 54, 89, 0.58);
+    --thinking-border: rgba(125, 145, 196, 0.28);
+    --thinking-highlight: rgba(191, 219, 254, 0.08);
+    --thinking-header-bg: rgba(191, 219, 254, 0.05);
+    --thinking-content-bg: rgba(15, 23, 42, 0.08);
+    --thinking-icon-color: #c4b5fd;
+    --thinking-glow: rgba(96, 165, 250, 0.18);
     --tool-bg: #1f3d2f;
     --border-color: #2d2d4a;
     --shadow: rgba(0, 0, 0, 0.4);
@@ -19,13 +27,22 @@
 [data-theme="light"] {
     --bg-primary: #ffffff;
     --bg-secondary: #f5f5f5;
+    --bg-tertiary: #f0f0f0;
     --text-primary: #1e1e2e;
     --text-secondary: #6b7280;
     --accent: #7c3aed;
     --accent-hover: #6d28d9;
     --user-bg: #e3f2fd;
     --assistant-bg: #f5f5f5;
-    --thinking-bg: #fff3e0;
+    --compacted-bg: #f1f5f9;
+    --compacted-border: #64748b;
+    --thinking-bg: rgba(241, 245, 249, 0.9);
+    --thinking-border: rgba(148, 163, 184, 0.4);
+    --thinking-highlight: rgba(255, 255, 255, 0.55);
+    --thinking-header-bg: rgba(255, 255, 255, 0.42);
+    --thinking-content-bg: rgba(226, 232, 240, 0.28);
+    --thinking-icon-color: #6366f1;
+    --thinking-glow: rgba(99, 102, 241, 0);
     --tool-bg: #e8f5e9;
     --border-color: #e5e7eb;
     --shadow: rgba(0, 0, 0, 0.1);
@@ -184,6 +201,127 @@ body {
     background-color: var(--assistant-bg);
 }
 
+.compacted-message {
+    background-color: var(--compacted-bg);
+    border: 1px dashed var(--compacted-border);
+}
+
+.compact-summary {
+    margin-top: 0.4rem;
+}
+
+.compact-summary summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.compact-summary-body {
+    position: relative;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    padding: 0.4rem;
+    margin-top: 0.25rem;
+}
+
+.compact-raw-toggle {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    font-size: 0.75rem;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 2px 8px;
+    border: 1px solid var(--compacted-border);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+}
+
+.compact-raw-toggle:hover {
+    opacity: 1;
+    background: var(--bg-primary);
+}
+
+.compact-summary-formatted {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    background: transparent;
+}
+
+.compact-summary > pre.compact-summary-content {
+    margin: 0;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+}
+
+.compact-hidden-messages {
+    margin-top: 0.4rem;
+}
+
+.compact-hidden-messages summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.compact-hidden-body {
+    position: relative;
+    margin-top: 0.25rem;
+}
+
+.compact-hidden-formatted,
+.compact-hidden-raw {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.compact-hidden-msg {
+    font-size: 0.82rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    border-left: 3px solid var(--compacted-border);
+}
+
+.compact-hidden-msg.compact-hidden-user {
+    border-left-color: var(--bs-primary, #0d6efd);
+}
+
+.compact-hidden-msg.compact-hidden-assistant {
+    border-left-color: var(--bs-secondary, #6c757d);
+}
+
+.compact-hidden-msg.compact-hidden-system {
+    border-left-color: var(--bs-warning, #ffc107);
+}
+
+.compact-hidden-role {
+    font-weight: 600;
+    font-size: 0.75rem;
+    margin-right: 0.4rem;
+    opacity: 0.7;
+}
+
+.compact-hidden-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+pre.compact-hidden-text {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.md-li {
+    display: block;
+    padding-left: 1em;
+    text-indent: -0.6em;
+}
+
 .system-message {
     background-color: var(--system-bg, rgba(255, 193, 7, 0.1));
     border-left: 3px solid var(--system-border, #ffc107);
@@ -238,10 +376,13 @@ body {
 
 /* Thinking block */
 .thinking-block {
-    background-color: var(--thinking-bg);
+    background: linear-gradient(180deg, var(--thinking-highlight) 0%, var(--thinking-bg) 100%);
+    border: 1px solid var(--thinking-border);
     border-radius: 8px;
     margin: 12px 0;
     overflow: hidden;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 0 24px var(--thinking-glow);
+    backdrop-filter: blur(10px);
 }
 
 .thinking-header {
@@ -251,14 +392,17 @@ body {
     padding: 10px 14px;
     cursor: pointer;
     user-select: none;
+    background-color: var(--thinking-header-bg);
 }
 
 .thinking-header:hover {
-    opacity: 0.9;
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
 .thinking-icon {
-    margin-right: 8px;
+    margin-right: 2px;
+    color: var(--thinking-icon-color);
+    text-shadow: 0 0 14px var(--thinking-glow);
 }
 
 .thinking-toggle {
@@ -271,7 +415,8 @@ body {
     font-size: 0.875rem;
     color: var(--text-secondary);
     white-space: pre-wrap;
-    border-top: 1px solid var(--border-color);
+    background-color: var(--thinking-content-bg);
+    border-top: 1px solid var(--thinking-border);
     padding-top: 10px;
 }
 
@@ -638,7 +783,8 @@ body {
 [data-theme="dark"] .badge.active-filter,
 [data-theme="dark"] .badge.bg-primary.active-filter,
 [data-theme="dark"] .badge.bg-secondary.active-filter,
-[data-theme="dark"] .badge.bg-info.active-filter {
+[data-theme="dark"] .badge.bg-info.active-filter,
+[data-theme="dark"] .badge.bg-dark.active-filter {
     background-color: var(--accent) !important;
     color: white !important;
     box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(59, 130, 246, 0.6);
@@ -802,6 +948,11 @@ body {
     max-width: 85%;
 }
 
+.messages.split-layout .compacted-message {
+    align-self: stretch;
+    max-width: 100%;
+}
+
 /* Collapse content */
 .collapse-content {
     transition: opacity 0.2s ease;
@@ -827,6 +978,7 @@ body {
 .badge.bg-primary.active-filter,
 .badge.bg-secondary.active-filter,
 .badge.bg-info.active-filter,
+.badge.bg-dark.active-filter,
 .badge.bg-warning.active-filter {
     background-color: var(--accent) !important;
     color: white !important;
@@ -875,4 +1027,120 @@ body {
 .token-badge-wrapper:hover .token-tooltip {
     opacity: 1;
     visibility: visible;
+}
+
+/* Session timing and tools summary */
+.session-timing {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.timing-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.875em;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.timing-chip i {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.session-tools-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.tool-summary-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border-left: 3px solid var(--border-color);
+}
+
+.tool-summary-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tool-summary-title i {
+    margin-right: 0.35rem;
+}
+
+.tool-summary-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tool-summary-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.tool-summary-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.tool-summary-badge.active-filter {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(59, 130, 246, 0.6);
+    background-color: var(--accent);
+    color: white;
+}
+
+/* Highlight flash when scrolling to element */
+.highlight-flash {
+    animation: highlight-pulse 1.5s ease-out;
+}
+
+@keyframes highlight-pulse {
+    0% { box-shadow: 0 0 0 4px var(--accent), 0 0 20px rgba(59, 130, 246, 0.8); }
+    50% { box-shadow: 0 0 0 2px var(--accent), 0 0 10px rgba(59, 130, 246, 0.4); }
+    100% { box-shadow: none; }
+}
+
+.tool-group-mcp .tool-summary-badge {
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.tool-group-skills .tool-summary-badge {
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.tool-group-mcp {
+    border-left-color: #3b82f6;
+}
+
+.tool-group-mcp .tool-summary-title {
+    color: #60a5fa;
+}
+
+.tool-group-skills {
+    border-left-color: #8b5cf6;
+}
+
+.tool-group-skills .tool-summary-title {
+    color: #a78bfa;
 }

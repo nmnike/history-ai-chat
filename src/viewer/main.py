@@ -2,6 +2,7 @@
 """FastAPI application for Claude Codex Viewer"""
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -27,7 +28,7 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 cache_db = CacheDB(cache_dir / "cache.db")
 
 # FastAPI app
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 app = FastAPI(
     title="Claude Codex Viewer",
     description="Web viewer for Claude Code and Codex CLI conversation history",
@@ -47,6 +48,81 @@ templates = Jinja2Templates(directory=str(templates_dir))
 templates.env.globals["VERSION"] = VERSION
 
 
+# Whitelist for skill-like tool names
+SKILL_WHITELIST = {
+    "Skill",
+    "AskUserQuestion",
+    "Agent",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskList",
+    "TaskGet",
+}
+
+
+def get_ended_at(session: Session) -> Optional[datetime]:
+    """Get session end time from session.ended_at or max message timestamp"""
+    if session.ended_at:
+        return session.ended_at
+    timestamps = [m.timestamp for m in session.messages if m.timestamp]
+    return max(timestamps) if timestamps else None
+
+
+def get_duration_seconds(session: Session) -> int:
+    """Get session duration in seconds"""
+    if not session.created_at:
+        return 0
+    ended = get_ended_at(session)
+    if not ended:
+        return 0
+    diff = (ended - session.created_at).total_seconds()
+    return max(0, int(diff))
+
+
+def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
+    """Classify tool_name into MCP and Skills categories"""
+    import re
+    from collections import Counter
+
+    mcp_counter = Counter()
+    skill_counter = Counter()
+
+    for msg in session.messages:
+        # Check tool_name for MCP and function-based skills
+        if msg.tool_name:
+            # MCP: starts with "mcp__", second segment is MCP name
+            if msg.tool_name.startswith("mcp__"):
+                parts = msg.tool_name.split("__")
+                if len(parts) >= 2:
+                    mcp_name = parts[1]
+                    mcp_counter[mcp_name] += 1
+
+            # Skills via Skill tool with skill input (assistant tool_use)
+            elif msg.tool_name == "Skill" and msg.tool_input:
+                skill_name = msg.tool_input.get("skill", "")
+                if skill_name:
+                    skill_counter[skill_name] += 1
+
+            # Skills: starts with "functions." and in whitelist
+            elif msg.tool_name.startswith("functions."):
+                skill_name = msg.tool_name.replace("functions.", "")
+                if skill_name in SKILL_WHITELIST:
+                    skill_counter[skill_name] += 1
+
+        # Check content for <command-name> skill invocations (user messages)
+        if msg.role == "user" and msg.content:
+            # Parse <command-name>/skill-name</command-name> tags
+            matches = re.findall(r"<command-name>/([^<]+)</command-name>", msg.content)
+            for skill_name in matches:
+                skill_counter[skill_name] += 1
+
+    mcps = [{"name": name, "count": count} for name, count in sorted(mcp_counter.items())]
+    skills = [{"name": name, "count": count} for name, count in sorted(skill_counter.items())]
+    return mcps, skills
+
+
 def session_to_dict(session: Session, platform: str) -> dict:
     """Convert Session to dict for JSON response"""
     # Aggregate tokens from all messages
@@ -55,6 +131,11 @@ def session_to_dict(session: Session, platform: str) -> dict:
     cache_read_tokens = sum(m.cache_read_tokens for m in session.messages)
     cache_creation_tokens = sum(m.cache_creation_tokens for m in session.messages)
 
+    # Compute ended_at, duration, and tool classification
+    ended_at = get_ended_at(session)
+    duration_seconds = get_duration_seconds(session)
+    mcps, skills = classify_tools(session)
+
     return {
         "id": session.id,
         "project_name": session.project_name,
@@ -62,11 +143,18 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "platform": platform,
         "first_message": session.first_message,
         "created_at": session.created_at.isoformat() if session.created_at else None,
+        "ended_at": ended_at.isoformat() if ended_at else None,
+        "duration_seconds": duration_seconds,
+        "mcps": mcps,
+        "skills": skills,
         "message_count": len(session.messages),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read_tokens,
-        "cache_creation_tokens": cache_creation_tokens
+        "cache_creation_tokens": cache_creation_tokens,
+        "model": session.model,
+        "effort": session.effort,
+        "custom_title": session.custom_title
     }
 
 
@@ -86,7 +174,10 @@ def message_to_dict(msg: Message) -> dict:
         "input_tokens": msg.input_tokens,
         "output_tokens": msg.output_tokens,
         "cache_read_tokens": msg.cache_read_tokens,
-        "cache_creation_tokens": msg.cache_creation_tokens
+        "cache_creation_tokens": msg.cache_creation_tokens,
+        "hidden_messages": msg.hidden_messages,
+        "model": msg.model,
+        "effort": msg.effort
     }
 
 
@@ -103,7 +194,7 @@ async def project_page(
     request: Request,
     project_id: str,
     platform: str = Query(default="claude"),
-    date: str = Query(default="today")
+    date: str = Query(default="week")
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(
@@ -133,7 +224,7 @@ async def conversation_page(
 # API Endpoints
 
 @app.get("/api/projects")
-async def list_projects(date: str = Query(default="today")):
+async def list_projects(date: str = Query(default="week")):
     """List all projects from both platforms with optional date filter"""
     from datetime import datetime, date as date_type, timedelta
 
@@ -277,7 +368,7 @@ async def list_projects(date: str = Query(default="today")):
 async def list_sessions(
     project_id: str,
     platform: str = Query(default="claude"),
-    date: str = Query(default="today")
+    date: str = Query(default="week")
 ):
     """List sessions for a project with optional date filter"""
     from datetime import datetime, date as date_type, timedelta
@@ -578,6 +669,15 @@ def to_local_datetime(dt):
     return dt
 
 
+def format_message_role(msg: Message) -> str:
+    """Human-friendly role label for exports."""
+    if msg.message_type == "compacted":
+        return "Context Compacted"
+    if msg.role == "tool_result":
+        return "Tool Result"
+    return msg.role.capitalize()
+
+
 def export_to_markdown(session: Session) -> str:
     """Export session to Markdown format"""
     from collections import Counter
@@ -629,7 +729,7 @@ def export_to_markdown(session: Session) -> str:
             time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
 
             # Determine role label
-            role_label = msg.role.capitalize()  # User, Assistant, System
+            role_label = format_message_role(msg)
             token_str = ""
 
             if msg.role == "assistant":
@@ -678,8 +778,9 @@ def export_to_html(session: Session) -> str:
     ]
 
     for msg in session.messages:
-        role = "User" if msg.role == "user" else "Assistant"
-        lines.append(f'<div class="message {msg.role}">')
+        role = format_message_role(msg)
+        message_class = msg.role if msg.role in ("user", "assistant") else "assistant"
+        lines.append(f'<div class="message {message_class}">')
         lines.append(f'<div class="role">{role}</div>')
         if msg.content:
             lines.append(f'<div class="content">{msg.content}</div>')

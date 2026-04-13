@@ -25,12 +25,17 @@
     <div class="col-md-8">
         <h5 class="mb-2">
             <i class="bi bi-chat-dots"></i>
-            <span id="session-id">{{ session_id }}</span>
+            <span id="session-title">{{ session_id }}</span>
             <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+            <span id="session-meta-badges"></span>
             <i class="bi bi-star" id="favorite-btn" style="cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem;" title="Add to favorites"></i>
         </h5>
-        <div id="session-stats" class="d-flex flex-wrap gap-1"></div>
-        <small class="text-muted" id="session-date"></small>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <small class="text-muted" id="session-date"></small>
+            <span id="session-timing" class="session-timing"></span>
+        </div>
+        <div id="session-stats" class="d-flex flex-wrap gap-1 mt-2"></div>
+        <div id="session-tools-summary" class="session-tools-summary mt-2"></div>
     </div>
     <div class="col-md-4 text-end">
         <div class="btn-group me-2">
@@ -65,8 +70,17 @@
 const sessionId = {{ session_id|tojson }};
 const projectId = {{ project_id|tojson }};
 const platform = {{ platform|tojson }};
+const TOOL_COLLAPSE_LINE_THRESHOLD = 30;
+const TOOL_COLLAPSE_CHAR_THRESHOLD = 4000;
 let allMessages = [];
-let activeFilter = null;
+let activeFilters = new Set();
+
+function shouldExpandToolContent(content) {
+    if (!content) return true;
+    const normalized = String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lineCount = normalized.split('\n').length;
+    return lineCount < TOOL_COLLAPSE_LINE_THRESHOLD && normalized.length < TOOL_COLLAPSE_CHAR_THRESHOLD;
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     initMessageLayout();
@@ -109,7 +123,11 @@ function loadConversation() {
             const session = data.session || {};
             const messages = data.messages || [];
 
-            // Update session info
+            // Update session title and date
+            if (session.custom_title) {
+                document.getElementById('session-title').innerHTML =
+                    '<strong>' + escapeHtml(session.custom_title) + '</strong> <span class="text-muted fw-normal" style="font-size: 0.75em;">' + escapeHtml(sessionId) + '</span>';
+            }
             if (session.created_at) {
                 document.getElementById('session-date').textContent =
                     new Date(session.created_at).toLocaleString();
@@ -121,9 +139,24 @@ function loadConversation() {
                 badgeEl.className = 'badge bg-warning text-dark';
             }
 
+            // Show model/effort badges for Codex sessions
+            const metaBadgesEl = document.getElementById('session-meta-badges');
+            if (metaBadgesEl) {
+                let metaHtml = '';
+                if (session.model) {
+                    metaHtml += `<span class="badge bg-dark ms-1" title="Model"><i class="bi bi-cpu"></i> ${escapeHtml(session.model)}</span>`;
+                }
+                if (session.effort) {
+                    metaHtml += `<span class="badge bg-secondary ms-1" title="Effort">${escapeHtml(session.effort)}</span>`;
+                }
+                metaBadgesEl.innerHTML = metaHtml;
+            }
+
             allMessages = messages;
             renderMessages(messages);
             updateSessionStats(messages);
+            renderSessionTiming(session);
+            renderToolSummary(session);
         })
         .catch(err => {
             console.error('Failed to load conversation:', err);
@@ -140,17 +173,19 @@ function renderMessages(messages) {
         return;
     }
 
-    // Track last tool_name to associate tool_result with its tool
+    // Track last tool_name/skill to associate tool_result with its source
     let lastToolName = '';
+    let lastSkillName = '';
 
     container.innerHTML = messages.map(msg => {
         const isUser = msg.role === 'user';
-        const isSystem = msg.role === 'system';
+        const isCompacted = msg.message_type === 'compacted';
+        const isSystem = msg.role === 'system' && !isCompacted;
         const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
-        const msgClass = isUser ? 'user-message' : (isSystem ? 'system-message' : 'assistant-message');
-        const roleLabel = isUser ? 'You' : (isSystem ? 'System' : (isToolResult ? 'Tool Result' : 'Assistant'));
-        const roleBadge = isUser ? 'bg-primary' : (isSystem ? 'bg-warning text-dark' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary'));
-        const roleIcon = isUser ? '' : (isSystem ? '<i class="bi bi-gear"></i> ' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : ''));
+        const msgClass = isUser ? 'user-message' : (isCompacted ? 'compacted-message' : (isSystem ? 'system-message' : 'assistant-message'));
+        const roleLabel = isUser ? 'You' : (isCompacted ? 'Context compacted' : (isSystem ? 'System' : (isToolResult ? 'Tool Result' : 'Assistant')));
+        const roleBadge = isUser ? 'bg-primary' : (isCompacted ? 'bg-dark' : (isSystem ? 'bg-warning text-dark' : (isToolResult ? 'bg-info text-dark' : 'bg-secondary')));
+        const roleIcon = isUser ? '' : (isCompacted ? '<i class="bi bi-arrows-collapse"></i> ' : (isSystem ? '<i class="bi bi-gear"></i> ' : (isToolResult ? '<i class="bi bi-terminal"></i> ' : '')));
 
         // Track tool_name for tool_result association
         if (msg.tool_name) {
@@ -158,9 +193,36 @@ function renderMessages(messages) {
         }
         const toolNameForFilter = isToolResult ? lastToolName : (msg.tool_name || '');
 
-        // Tool result is collapsed by default
-        const collapsedStyle = isToolResult ? 'style="display: none"' : '';
-        const collapsedIcon = isToolResult ? 'bi-chevron-right' : 'bi-chevron-down';
+        // Extract MCP name for filtering (e.g., "context7" from "mcp__context7__query-docs")
+        let mcpNameForFilter = '';
+        if (toolNameForFilter.startsWith('mcp__')) {
+            const parts = toolNameForFilter.split('__');
+            if (parts.length >= 2) {
+                mcpNameForFilter = parts[1];
+            }
+        }
+
+        // Extract Skill name for filtering from user message content or Skill tool invocations
+        let currentSkillNameForFilter = '';
+        if (isUser && msg.content) {
+            const skillMatch = msg.content.match(/<command-name>\/([^<]+)<\/command-name>/);
+            if (skillMatch) {
+                currentSkillNameForFilter = skillMatch[1];
+            }
+        }
+        if (!isUser && (msg.tool_name === 'Skill' || msg.tool_name === 'functions.Skill') && msg.tool_input && msg.tool_input.skill) {
+            currentSkillNameForFilter = msg.tool_input.skill;
+        }
+        if (currentSkillNameForFilter) {
+            lastSkillName = currentSkillNameForFilter;
+        }
+        const isLastSkillTool = toolNameForFilter === 'Skill' || toolNameForFilter === 'functions.Skill';
+        const skillNameForFilter = isToolResult && isLastSkillTool ? lastSkillName : currentSkillNameForFilter;
+
+        const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
+        const messageExpanded = isToolResult ? toolResultExpanded : true;
+        const collapsedStyle = messageExpanded ? '' : 'style="display: none"';
+        const collapsedIcon = messageExpanded ? 'bi-chevron-down' : 'bi-chevron-right';
 
         let contentHtml = '';
 
@@ -169,7 +231,7 @@ function renderMessages(messages) {
             contentHtml += `
                 <div class="thinking-block mb-2">
                     <div class="thinking-header collapsible-header" onclick="toggleCollapse(this)">
-                        <i class="bi bi-lightbulb"></i> Thinking
+                        <i class="bi bi-lightbulb thinking-icon"></i> Thinking
                         <i class="bi bi-chevron-down collapse-icon"></i>
                     </div>
                     <pre class="thinking-content mb-0 collapse-content">${escapeHtml(msg.thinking_text)}</pre>
@@ -179,27 +241,61 @@ function renderMessages(messages) {
 
         // Main content
         if (msg.content) {
-            contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
+            if (isCompacted) {
+                const splitIdx = msg.content.indexOf('\n\n');
+                const header = splitIdx > -1 ? msg.content.substring(0, splitIdx) : msg.content;
+                const summary = splitIdx > -1 ? msg.content.substring(splitIdx + 2).trim() : '';
+                contentHtml += `<div class="message-content collapse-content">${escapeHtml(header)}`;
+                if (summary) {
+                    const escapedSummary = escapeHtml(summary);
+                    contentHtml += `<details class="compact-summary"><summary><i class="bi bi-file-text"></i> Summary</summary><div class="compact-summary-body"><span class="compact-raw-toggle" onclick="toggleSummaryRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-summary-formatted">${formatContent(summary)}</div><pre class="compact-summary-content" style="display:none">${escapedSummary}</pre></div></details>`;
+                }
+                if (msg.hidden_messages && msg.hidden_messages.length > 0) {
+                    contentHtml += `<details class="compact-hidden-messages"><summary><i class="bi bi-chat-square-text"></i> ${msg.hidden_messages.length} hidden messages</summary><div class="compact-hidden-body"><span class="compact-raw-toggle" onclick="toggleHiddenRaw(this)" title="Toggle raw/markdown">raw</span><div class="compact-hidden-formatted">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><span class="compact-hidden-text">${formatContent(stripPromptTags(hm.content))}</span></div>`;
+                    }
+                    contentHtml += `</div><div class="compact-hidden-raw" style="display:none">`;
+                    for (const hm of msg.hidden_messages) {
+                        const roleClass = hm.role === 'user' ? 'user' : (hm.role === 'assistant' ? 'assistant' : 'system');
+                        const roleLabel = hm.role === 'user' ? 'User' : (hm.role === 'assistant' ? 'Assistant' : 'System');
+                        contentHtml += `<div class="compact-hidden-msg compact-hidden-${roleClass}"><span class="compact-hidden-role">${roleLabel}</span><pre class="compact-hidden-text">${escapeHtml(hm.content)}</pre></div>`;
+                    }
+                    contentHtml += `</div></div></details>`;
+                }
+                contentHtml += `</div>`;
+            } else {
+                contentHtml += `<div class="message-content collapse-content">${formatContent(msg.content)}</div>`;
+            }
         }
 
-        // Tool use - collapsed by default
         if (msg.tool_name) {
+            const toolInputText = msg.tool_input
+                ? (typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : String(msg.tool_input))
+                : '';
+            const toolUseExpanded = shouldExpandToolContent(toolInputText);
+            const toolUseCollapsedStyle = toolUseExpanded ? '' : 'style="display: none"';
+            const toolUseCollapsedIcon = toolUseExpanded ? 'bi-chevron-down' : 'bi-chevron-right';
+
             contentHtml += `
                 <div class="tool-use-block mt-2">
                     <div class="tool-header collapsible-header" onclick="toggleCollapse(this)">
                         <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
-                        <i class="bi bi-chevron-right collapse-icon"></i>
+                        <i class="bi ${toolUseCollapsedIcon} collapse-icon"></i>
                     </div>
-                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" style="display: none">${escapeHtml(typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : msg.tool_input)}</pre>` : ''}
+                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" ${toolUseCollapsedStyle}>${escapeHtml(toolInputText)}</pre>` : ''}
                 </div>
             `;
         }
 
         return `
-            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}">
+            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                    ${msg.model ? `<span class="badge bg-dark ms-1" style="font-size: 0.65rem;" title="Model">${escapeHtml(msg.model)}${msg.effort ? ' · ' + escapeHtml(msg.effort) : ''}</span>` : ''}
                     ${!isUser && (msg.input_tokens || msg.output_tokens) ? `<span class="badge bg-success ms-1" style="font-size: 0.65rem;">${formatTokens(msg.input_tokens || 0)}/${formatTokens(msg.output_tokens || 0)}</span>` : ''}
                     <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
                 </div>
@@ -209,17 +305,50 @@ function renderMessages(messages) {
     }).join('');
 }
 
+function stripPromptTags(text) {
+    return text.replace(/<\/?[a-zA-Z_][\w_-]*(?:\s[^>]*)? *>\s*/g, '');
+}
+
 function formatContent(content) {
-    // Basic markdown-like formatting
     let formatted = escapeHtml(content);
+
+    // Normalize line endings and collapse excessive blank lines
+    formatted = formatted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     // Code blocks
     formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
         return `<pre class="code-block"><code>${code.trim()}</code></pre>`;
     });
 
-    // Inline code
-    formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Inline code (use * not + to handle empty backtick pairs like ``)
+    formatted = formatted.replace(/`([^`]*)`/g, '<code class="inline-code">$1</code>');
+
+    // Bold
+    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Headers (at line start)
+    formatted = formatted.replace(/(^|\n)(#{1,4}) (.+)/g, (match, pre, hashes, text) => {
+        const level = hashes.length;
+        return `${pre}<strong style="font-size:${1.2 - level * 0.1}em">${text}</strong>`;
+    });
+
+    // Unordered lists (- item, with optional indentation)
+    formatted = formatted.replace(/(^|\n)( *)- (.+)/g, (match, pre, indent, text) => {
+        const level = Math.floor(indent.length / 2);
+        const pad = level > 0 ? ` style="margin-left:${level}em"` : '';
+        return `${pre}<span class="md-li"${pad}>• ${text}</span>`;
+    });
+
+    // Ordered lists (1. item, with optional indentation)
+    formatted = formatted.replace(/(^|\n)( *)(\d+)\. (.+)/g, (match, pre, indent, num, text) => {
+        const level = Math.floor(indent.length / 2);
+        const pad = level > 0 ? ` style="margin-left:${level}em"` : '';
+        return `${pre}<span class="md-li"${pad}>${num}. ${text}</span>`;
+    });
+
+    // Horizontal rules
+    formatted = formatted.replace(/(^|\n)---+(\n|$)/g, '$1<hr>$2');
 
     // Line breaks
     formatted = formatted.replace(/\n/g, '<br>');
@@ -354,6 +483,7 @@ function updateSessionStats(messages) {
     const stats = {
         user: 0,
         system: 0,
+        compacted: 0,
         assistant: 0,
         tools: {},
         tokens: {
@@ -365,7 +495,9 @@ function updateSessionStats(messages) {
     };
 
     messages.forEach(msg => {
-        if (msg.role === 'user') {
+        if (msg.message_type === 'compacted') {
+            stats.compacted++;
+        } else if (msg.role === 'user') {
             stats.user++;
         } else if (msg.role === 'system') {
             stats.system++;
@@ -388,6 +520,9 @@ function updateSessionStats(messages) {
     let html = `<span class="badge bg-primary me-1 stat-badge" data-filter="user" onclick="toggleFilter('user')"><i class="bi bi-person"></i> ${stats.user}</span>`;
     if (stats.system > 0) {
         html += `<span class="badge bg-warning text-dark me-1 stat-badge" data-filter="system" onclick="toggleFilter('system')"><i class="bi bi-gear"></i> ${stats.system}</span>`;
+    }
+    if (stats.compacted > 0) {
+        html += `<span class="badge bg-dark me-1 stat-badge" data-filter="compacted" onclick="toggleFilter('compacted')"><i class="bi bi-arrows-collapse"></i> ${stats.compacted}</span>`;
     }
     html += `<span class="badge bg-secondary me-1 stat-badge" data-filter="assistant" onclick="toggleFilter('assistant')"><i class="bi bi-robot"></i> ${stats.assistant}</span>`;
 
@@ -429,43 +564,200 @@ function formatTokens(n) {
     return n.toString();
 }
 
+function messageMatchesFilter(bubble, filter) {
+    const tool = bubble.dataset.tool;
+    const role = bubble.dataset.role;
+    const messageType = bubble.dataset.messageType;
+    const mcp = bubble.dataset.mcp;
+    const skill = bubble.dataset.skill;
+
+    const matchesRole = (
+        (filter === 'user' && role === 'user') ||
+        (filter === 'compacted' && messageType === 'compacted') ||
+        (filter === 'system' && role === 'system' && messageType !== 'compacted') ||
+        (filter === 'assistant' && role === 'assistant')
+    );
+    const matchesTool = tool === filter;
+    const matchesMcp = mcp === filter;
+    const matchesSkill = skill === filter;
+    return matchesRole || matchesTool || matchesMcp || matchesSkill;
+}
+
 function toggleFilter(filter) {
-    const badges = document.querySelectorAll('.stat-badge');
-    const bubbles = document.querySelectorAll('.message-bubble');
-
-    if (activeFilter === filter) {
-        // Toggle off - show all
-        activeFilter = null;
-        badges.forEach(b => b.classList.remove('active-filter'));
-        bubbles.forEach(b => b.style.display = '');
+    if (activeFilters.has(filter)) {
+        activeFilters.delete(filter);
     } else {
-        // Apply filter
-        activeFilter = filter;
-        badges.forEach(b => {
-            if (b.dataset.filter === filter) {
-                b.classList.add('active-filter');
-            } else {
-                b.classList.remove('active-filter');
-            }
-        });
-
-        bubbles.forEach(b => {
-            const tool = b.dataset.tool;
-            const role = b.dataset.role;
-
-            if (filter === 'user' && role === 'user') {
-                b.style.display = '';
-            } else if (filter === 'system' && role === 'system') {
-                b.style.display = '';
-            } else if (filter === 'assistant' && role === 'assistant') {
-                b.style.display = '';
-            } else if (tool === filter) {
-                b.style.display = '';
-            } else {
-                b.style.display = 'none';
-            }
-        });
+        activeFilters.add(filter);
     }
+    updateFilterBadges();
+    applyFilters();
+}
+
+function updateFilterBadges() {
+    const badges = document.querySelectorAll('.stat-badge');
+    badges.forEach(b => {
+        if (activeFilters.has(b.dataset.filter)) {
+            b.classList.add('active-filter');
+        } else {
+            b.classList.remove('active-filter');
+        }
+    });
+    // Also handle tool-summary-badge (MCP/Skills)
+    const toolBadges = document.querySelectorAll('.tool-summary-badge');
+    toolBadges.forEach(b => {
+        const filterValue = b.textContent.trim();
+        if (activeFilters.has(filterValue)) {
+            b.classList.add('active-filter');
+        } else {
+            b.classList.remove('active-filter');
+        }
+    });
+}
+
+function applyFilters() {
+    const bubbles = document.querySelectorAll('.message-bubble');
+    if (activeFilters.size === 0) {
+        bubbles.forEach(b => b.style.display = '');
+        return;
+    }
+
+    bubbles.forEach(bubble => {
+        const matches = Array.from(activeFilters).some(filter => messageMatchesFilter(bubble, filter));
+        bubble.style.display = matches ? '' : 'none';
+    });
+}
+
+function scrollToFirstUsage(name) {
+    // Prefer tool_result launch line for skills, otherwise first matching bubble
+    const bubbles = Array.from(document.querySelectorAll('.message-bubble'));
+    const target = bubbles.find(bubble =>
+        bubble.dataset.skill === name && bubble.dataset.role === 'tool_result'
+    ) || bubbles.find(bubble => {
+        const mcp = bubble.dataset.mcp;
+        const skill = bubble.dataset.skill;
+        return mcp === name || skill === name;
+    });
+
+    if (target) {
+        const scrollContainer = document.getElementById('messages-container');
+        const headerOffset = 24;
+
+        if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const targetTop = scrollContainer.scrollTop + (targetRect.top - containerRect.top) - headerOffset;
+            scrollContainer.scrollTo({
+                top: Math.max(0, targetTop),
+                behavior: 'smooth'
+            });
+        } else {
+            const elementPosition = target.getBoundingClientRect().top + window.pageYOffset;
+            window.scrollTo({
+                top: Math.max(0, elementPosition - 60),
+                behavior: 'smooth'
+            });
+        }
+
+        target.classList.add('highlight-flash');
+        setTimeout(() => target.classList.remove('highlight-flash'), 1500);
+    }
+}
+
+function toggleSummaryRaw(btn) {
+    const details = btn.closest('.compact-summary');
+    const formatted = details.querySelector('.compact-summary-formatted');
+    const raw = details.querySelector('.compact-summary-content');
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        formatted.style.display = 'none';
+        btn.textContent = 'md';
+    } else {
+        raw.style.display = 'none';
+        formatted.style.display = '';
+        btn.textContent = 'raw';
+    }
+}
+
+function toggleHiddenRaw(btn) {
+    const body = btn.closest('.compact-hidden-body');
+    const formatted = body.querySelector('.compact-hidden-formatted');
+    const raw = body.querySelector('.compact-hidden-raw');
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        formatted.style.display = 'none';
+        btn.textContent = 'md';
+    } else {
+        raw.style.display = 'none';
+        formatted.style.display = '';
+        btn.textContent = 'raw';
+    }
+}
+
+function renderSessionTiming(session) {
+    const container = document.getElementById('session-timing');
+    if (!session.created_at && !session.ended_at) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const parts = [];
+
+    if (session.created_at) {
+        const startTime = new Date(session.created_at).toLocaleTimeString();
+        parts.push(`<span class="text-muted"><i class="bi bi-play-circle"></i>&nbsp;${startTime}</span>`);
+    }
+
+    if (session.ended_at) {
+        const endTime = new Date(session.ended_at).toLocaleTimeString();
+        parts.push(`<span class="text-muted"><i class="bi bi-stop-circle"></i>&nbsp;${endTime}</span>`);
+    }
+
+    if (session.duration_seconds) {
+        parts.push(`<span class="text-muted"><i class="bi bi-clock"></i>&nbsp;${formatDuration(session.duration_seconds)}</span>`);
+    }
+
+    container.innerHTML = parts.length ? ' ' + parts.join(' ') : '';
+}
+
+function formatDuration(totalSeconds) {
+    if (totalSeconds < 60) {
+        return totalSeconds + 's';
+    } else if (totalSeconds < 3600) {
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return mins + 'm ' + secs + 's';
+    } else {
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        return hours + 'h ' + String(mins).padStart(2, '0') + 'm';
+    }
+}
+
+function renderToolSummary(session) {
+    const container = document.getElementById('session-tools-summary');
+    const sections = [];
+
+    if (session.mcps && session.mcps.length > 0) {
+        sections.push(renderToolGroup('MCP Tools', 'bi-plug', session.mcps, 'tool-group-mcp'));
+    }
+    if (session.skills && session.skills.length > 0) {
+        sections.push(renderToolGroup('Skills', 'bi-magic', session.skills, 'tool-group-skills'));
+    }
+
+    container.innerHTML = sections.join('');
+}
+
+function renderToolGroup(title, icon, items, cssClass) {
+    let badges = items.map(item =>
+        `<span class="tool-summary-badge" onclick="scrollToFirstUsage('${escapeHtml(item.name)}')">${escapeHtml(item.name)}</span>`
+    ).join('');
+
+    return `
+        <div class="tool-summary-group ${cssClass}">
+            <span class="tool-summary-title"><i class="bi ${icon}"></i> ${title}</span>
+            <div class="tool-summary-badges">${badges}</div>
+        </div>
+    `;
 }
 </script>
 {% endblock %}
