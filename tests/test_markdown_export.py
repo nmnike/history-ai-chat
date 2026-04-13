@@ -49,17 +49,21 @@ def test_export_markdown_stats_header():
 
     result = export_to_markdown(session)
 
-    # Check stats line format
-    assert "👤 1" in result  # 1 user message
-    assert "🤖 2" in result  # 2 assistant messages
-    assert "🔧 1 tool calls (Read: 1)" in result  # tool breakdown
-    assert "600/150 tokens" in result  # total input/output
-    assert "cache:" in result
-    assert "**Created:** 2026-03-17 14:30" in result
+    # Check messages line format
+    assert "👤 1 user" in result  # 1 user message
+    assert "🤖 2 assistant" in result  # 2 assistant messages
+    assert "🔧 1 tool calls" in result  # tool count
+    # Check timing format
+    assert "**Timing:**" in result
+    assert "Start: 2026-03-17 14:30" in result
+    # Check tokens section
+    assert "**Tokens:**" in result
+    assert "600" in result  # total input
+    assert "150" in result  # total output
 
 
 def test_export_markdown_tool_breakdown():
-    """Tool breakdown shows multiple tools sorted by count"""
+    """Tool count shows total number of tool calls"""
     messages = [
         make_message("user", "Hello"),
         make_message("assistant", "A", tool_name="Read"),
@@ -72,8 +76,8 @@ def test_export_markdown_tool_breakdown():
     session = make_session(messages=messages)
     result = export_to_markdown(session)
 
-    # 6 tool calls with breakdown, sorted by count descending
-    assert "🔧 6 tool calls (Read: 3, Bash: 2, Edit: 1)" in result
+    # 6 tool calls in messages line
+    assert "🔧 6 tool calls" in result
 
 
 def test_export_markdown_message_timestamp():
@@ -112,10 +116,10 @@ def test_export_markdown_message_no_tokens():
 
 
 def test_export_markdown_created_at_unknown():
-    """When created_at is None, show 'Unknown'"""
+    """When created_at is None, show 'Unknown' in Timing"""
     session = make_session(messages=[], created_at=None)
     result = export_to_markdown(session)
-    assert "**Created:** Unknown" in result
+    assert "**Timing:** Start: Unknown" in result
 
 
 def test_export_markdown_tool_result_not_counted():
@@ -127,9 +131,9 @@ def test_export_markdown_tool_result_not_counted():
     ]
     session = make_session(messages=messages)
     result = export_to_markdown(session)
-    assert "👤 1" in result  # tool_result excluded from user count
-    assert "🤖 1" in result
-    assert "🔧 1 tool calls (Read: 1)" in result  # tool_result not counted as tool call
+    assert "👤 1 user" in result  # tool_result excluded from user count
+    assert "🤖 1 assistant" in result
+    assert "🔧 1 tool calls" in result  # tool_result not counted as tool call
 
 
 def test_export_markdown_empty_tool_input():

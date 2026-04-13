@@ -665,7 +665,7 @@ async def export_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     if format == "md":
-        content = export_to_markdown(session)
+        content = export_to_markdown(session, platform)
         media_type = "text/markdown"
     elif format == "html":
         content = export_to_html(session)
@@ -710,8 +710,8 @@ def format_message_role(msg: Message) -> str:
     return msg.role.capitalize()
 
 
-def export_to_markdown(session: Session) -> str:
-    """Export session to Markdown format"""
+def export_to_markdown(session: Session, platform: str = "claude") -> str:
+    """Export session to Markdown format with full header metadata"""
     from collections import Counter
 
     # Calculate aggregate statistics
@@ -723,59 +723,131 @@ def export_to_markdown(session: Session) -> str:
     tool_counts = Counter(m.tool_name for m in session.messages if m.tool_name)
     tool_breakdown = ", ".join(f"{name}: {count}" for name, count in tool_counts.most_common())
 
+    # Token totals
     total_input = sum(m.input_tokens for m in session.messages)
     total_output = sum(m.output_tokens for m in session.messages)
     total_cache_read = sum(m.cache_read_tokens for m in session.messages)
     total_cache_created = sum(m.cache_creation_tokens for m in session.messages)
+    total_tokens = total_input + total_output + total_cache_read + total_cache_created
 
-    # Format created_at (convert UTC to local time)
+    # Cost calculation
+    cost = calculate_session_cost(session)
+
+    # MCP and Skills classification
+    mcps, skills = classify_tools(session)
+
+    # Timing
     local_created = to_local_datetime(session.created_at)
     created_str = local_created.strftime("%Y-%m-%d %H:%M") if local_created else "Unknown"
+    ended_at = get_ended_at(session)
+    local_ended = to_local_datetime(ended_at)
+    ended_str = local_ended.strftime("%H:%M:%S") if local_ended else ""
+    duration_seconds = get_duration_seconds(session)
+    duration_str = format_duration_md(duration_seconds) if duration_seconds else ""
 
-    # Build tool stats with breakdown
-    if tool_calls > 0 and tool_breakdown:
-        tool_stats = f"🔧 {tool_calls} tool calls ({tool_breakdown})"
-    else:
-        tool_stats = f"🔧 {tool_calls} tool calls"
+    # Project display name - use cwd from first message (real project path)
+    real_project_path = ""
+    if session.messages and session.messages[0].project_path:
+        real_project_path = session.messages[0].project_path
+    project_display = real_project_path or session.project_name
 
-    # Build stats line
-    stats = f"👤 {user_count} • 🤖 {assistant_count} • {tool_stats} • {format_token_count(total_input)}/{format_token_count(total_output)} tokens (cache: {format_token_count(total_cache_read)} read, {format_token_count(total_cache_created)} created)"
-
+    # Build header lines
     lines = [
         f"# Conversation: {session.id}",
-        f"\n**Project:** {session.project_name}",
-        f"**Created:** {created_str}",
-        f"**Stats:** {stats}",
-        "\n---\n"
+        f"\n**Agent:** {platform.capitalize()}",
+        f"**Project:** {project_display}",
     ]
 
+    # Model and effort
+    if session.model:
+        model_str = session.model
+        if session.effort:
+            model_str += f" ({session.effort})"
+        lines.append(f"**Model:** {model_str}")
+
+    # Timing section
+    timing_parts = []
+    if created_str:
+        timing_parts.append(f"Start: {created_str}")
+    if ended_str:
+        timing_parts.append(f"End: {ended_str}")
+    if duration_str:
+        timing_parts.append(f"Duration: {duration_str}")
+    if timing_parts:
+        lines.append(f"**Timing:** {' • '.join(timing_parts)}")
+
+    # Token statistics with detailed breakdown
+    token_parts = []
+    if total_tokens > 0:
+        token_parts.append(f"Input: {total_input}")
+        token_parts.append(f"Output: {total_output}")
+        if total_cache_read > 0:
+            token_parts.append(f"Cache Read: {total_cache_read}")
+        if total_cache_created > 0:
+            token_parts.append(f"Cache Created: {total_cache_created}")
+        lines.append(f"**Tokens:** {' • '.join(token_parts)} (Total: {total_tokens})")
+
+    # Cost with detailed breakdown
+    if cost and cost.get("available"):
+        cost_parts = []
+        cost_parts.append(f"Input: ${cost['input_usd']:.2f} ({cost['priced_input_tokens']})")
+        cost_parts.append(f"Output: ${cost['output_usd']:.2f} ({cost['priced_output_tokens']})")
+        if cost['cache_read_usd'] > 0:
+            cost_parts.append(f"Cache Read: ${cost['cache_read_usd']:.2f} ({cost['priced_cache_read_tokens']})")
+        if cost['cache_creation_usd'] > 0:
+            cost_parts.append(f"Cache Creation: ${cost['cache_creation_usd']:.2f} ({cost['priced_cache_creation_tokens']})")
+        cost_line = f"**Cost:** ${cost['total_usd']:.2f}"
+        if cost.get("models"):
+            cost_line += f" (Models: {', '.join(cost['models'])})"
+        if cost.get("partial"):
+            cost_line += f" — Partial: {cost['priced_messages']}/{cost['priced_messages'] + cost['unpriced_messages']} messages"
+        lines.append(cost_line)
+        lines.append(f"**Cost Details:** {' • '.join(cost_parts)}")
+
+    # Message stats
+    stats_parts = [f"👤 {user_count} user", f"🤖 {assistant_count} assistant"]
+    if tool_calls > 0:
+        stats_parts.append(f"🔧 {tool_calls} tool calls")
+    lines.append(f"**Messages:** {' • '.join(stats_parts)}")
+
+    # MCP Tools
+    if mcps:
+        mcp_str = ", ".join(f"{m['name']} ({m['count']})" for m in mcps)
+        lines.append(f"**MCP Tools:** {mcp_str}")
+
+    # Skills
+    if skills:
+        skill_str = ", ".join(f"{s['name']} ({s['count']})" for s in skills)
+        lines.append(f"**Skills:** {skill_str}")
+
+    lines.append("\n---\n")
+
+    # Messages
     for msg in session.messages:
         if msg.role == "tool_result":
-            # Tool result - no timestamp per spec
             lines.append(f"\n### Tool Result\n")
             if msg.content:
-                lines.append(f"```\n{msg.content}\n```")
+                # Try to format as JSON if it's valid JSON
+                try:
+                    json_data = json.loads(msg.content)
+                    lines.append(f"```json\n{json.dumps(json_data, indent=2, ensure_ascii=False)}\n```")
+                except (json.JSONDecodeError, TypeError):
+                    lines.append(f"```\n{msg.content}\n```")
         else:
-            # Format timestamp for user/assistant/system (convert UTC to local time)
             local_ts = to_local_datetime(msg.timestamp)
             time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
-
-            # Determine role label
             role_label = format_message_role(msg)
             token_str = ""
 
             if msg.role == "assistant":
-                # Assistant - add token badge if tokens present
                 if msg.input_tokens > 0 or msg.output_tokens > 0:
                     token_str = f" • {format_token_count(msg.input_tokens)}/{format_token_count(msg.output_tokens)} tokens"
 
             lines.append(f"\n### {role_label}{time_str}{token_str}\n")
 
-            # Wrap content in code fence to preserve formatting
             if msg.content:
                 lines.append(f"```\n{msg.content}\n```")
 
-            # Assistant-specific: thinking and tool use
             if msg.role == "assistant":
                 if msg.thinking_text:
                     lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
@@ -787,6 +859,20 @@ def export_to_markdown(session: Session) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def format_duration_md(seconds: int) -> str:
+    """Format duration for markdown export"""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}m {secs}s"
+    else:
+        hours = seconds // 3600
+        mins = (seconds % 3600) // 60
+        return f"{hours}h {mins}m"
 
 
 def export_to_html(session: Session) -> str:

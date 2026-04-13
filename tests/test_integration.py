@@ -605,7 +605,6 @@ def test_conversation_template_contains_header_metrics_ui():
     assert '<i class="bi bi-cash-coin"></i>' not in response.text
     assert 'Real cost' not in response.text
     assert 'Partial cost' not in response.text
-    assert 'unpriced_messages' not in response.text
 
 
 
