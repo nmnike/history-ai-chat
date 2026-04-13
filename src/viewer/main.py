@@ -29,7 +29,7 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 cache_db = CacheDB(cache_dir / "cache.db")
 
 # FastAPI app
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 app = FastAPI(
     title="Claude Codex Viewer",
     description="Web viewer for Claude Code and Codex CLI conversation history",
