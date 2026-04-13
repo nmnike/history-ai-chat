@@ -1,5 +1,6 @@
 # tests/test_integration.py
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -272,3 +273,83 @@ def test_conversation_template_renders_timing_and_tool_cards():
     assert 'MCP Tools' in response.text
     assert 'Skills' in response.text
     assert 'formatDuration(' in response.text
+
+
+def test_conversation_template_compacts_tool_input_rendering():
+    """Conversation template should keep pretty JSON and compact multiline string values"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function compactMultilineText(text)' in response.text
+    assert 'JSON.stringify(normalizedInput, null, 2)' in response.text
+    assert 'JSON.stringify(msg.tool_input, null, 2)' not in response.text
+    assert 'function normalizeToolInputValue(value)' in response.text
+    assert "return text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').replace(/\\n{3,}/g, '\\n\\n');" in response.text
+
+
+def test_conversation_template_renders_multiline_tool_fields_separately():
+    """Conversation template should add readable blocks for multiline JSON fields"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function renderToolInput(toolName, input, collapsedStyle)' in response.text
+    assert 'function collectMultilineToolInputFields(value, path = [])' in response.text
+    assert 'tool-input-multiline-fields' in response.text
+    assert 'tool-input-field-label' in response.text
+
+
+
+def test_conversation_template_hides_raw_json_only_for_custom_tool_views():
+    """Conversation template should hide raw JSON only when a custom readable view exists"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function parseLibraryListToolView(input)' in response.text
+    assert 'function renderLibraryListToolView(parsed)' in response.text
+    assert 'const hasCustomView = Boolean(readableViewHtml);' in response.text
+    assert 'hasCustomView ?' in response.text
+    assert 'tool-input-raw-toggle' in response.text
+    assert 'style="display: none"' in response.text
+    assert 'tool-input-readable-view' in response.text
+    assert "${hasCustomView ? '<button type=\"button\" class=\"tool-input-raw-toggle\" onclick=\"toggleToolRaw(this)\">Show raw JSON</button>' : ''}" in response.text
+
+
+
+def test_conversation_template_supports_compact_skill_preview():
+    """Conversation template should provide compact readable preview for Skill tool input"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function parseSkillToolView(toolName, input)' in response.text
+    assert 'function renderSkillToolView(parsed)' in response.text
+    assert 'Base directory for this skill:' in response.text
+    assert 'skill-readable-preview' in response.text
+    assert 'skill-readable-body' in response.text
+
+
+
+def test_conversation_template_supports_compact_skill_dump_content_preview():
+    """Conversation template should compact skill dump text in regular message content"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function parseSkillDumpContent(content)' in response.text
+    assert 'function renderSkillDumpContent(parsed)' in response.text
+    assert 'message-content skill-dump-preview collapse-content' in response.text
+    assert 'skill-dump-raw-toggle' in response.text
+    assert 'skill-dump-body' in response.text
+
+
+
+def test_conversation_template_supports_compact_tool_result_library_preview():
+    """Conversation template should render library list tool results as readable cards with raw toggle"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'function parseToolResultLibraryContent(content)' in response.text
+    assert 'function renderToolResultContent(content)' in response.text
+    assert 'tool-result-readable-view' in response.text
+    assert 'tool-result-raw-toggle' in response.text
+    assert 'Show raw result' in response.text
+    assert 'function compactLibraryDescription(text, maxLength = 220)' in response.text
+    assert 'tool-library-list compact' in response.text
+    assert 'const headerChunk = firstLibraryStart >= 0 ? firstChunk.slice(0, firstLibraryStart).trim() : firstChunk;' in response.text
+    assert "const firstLibraryChunk = firstLibraryStart >= 0 ? firstChunk.slice(firstLibraryStart + 1).trim() : '';" in response.text
+    assert 'const libraryChunks = [firstLibraryChunk, ...chunks.slice(1)].filter(Boolean);' in response.text
+    css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
+    assert '.tool-result-readable-view {' in css_text
+    assert 'white-space: normal;' in css_text

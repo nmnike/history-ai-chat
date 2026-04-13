@@ -241,7 +241,13 @@ function renderMessages(messages) {
 
         // Main content
         if (msg.content) {
-            if (isCompacted) {
+            const parsedToolResultContent = isToolResult ? parseToolResultLibraryContent(msg.content) : null;
+            const parsedSkillDumpContent = parseSkillDumpContent(msg.content);
+            if (parsedToolResultContent) {
+                contentHtml += renderToolResultContent(msg.content);
+            } else if (parsedSkillDumpContent) {
+                contentHtml += renderSkillDumpContent(parsedSkillDumpContent);
+            } else if (isCompacted) {
                 const splitIdx = msg.content.indexOf('\n\n');
                 const header = splitIdx > -1 ? msg.content.substring(0, splitIdx) : msg.content;
                 const summary = splitIdx > -1 ? msg.content.substring(splitIdx + 2).trim() : '';
@@ -272,9 +278,7 @@ function renderMessages(messages) {
         }
 
         if (msg.tool_name) {
-            const toolInputText = msg.tool_input
-                ? (typeof msg.tool_input === 'object' ? JSON.stringify(msg.tool_input, null, 2) : String(msg.tool_input))
-                : '';
+            const toolInputText = formatToolInput(msg.tool_input);
             const toolUseExpanded = shouldExpandToolContent(toolInputText);
             const toolUseCollapsedStyle = toolUseExpanded ? '' : 'style="display: none"';
             const toolUseCollapsedIcon = toolUseExpanded ? 'bi-chevron-down' : 'bi-chevron-right';
@@ -285,7 +289,7 @@ function renderMessages(messages) {
                         <i class="bi bi-tools"></i> Tool: ${escapeHtml(msg.tool_name)}
                         <i class="bi ${toolUseCollapsedIcon} collapse-icon"></i>
                     </div>
-                    ${msg.tool_input ? `<pre class="tool-input mb-0 collapse-content" ${toolUseCollapsedStyle}>${escapeHtml(toolInputText)}</pre>` : ''}
+                    ${renderToolInput(msg.tool_name, msg.tool_input, toolUseCollapsedStyle)}
                 </div>
             `;
         }
@@ -307,6 +311,248 @@ function renderMessages(messages) {
 
 function stripPromptTags(text) {
     return text.replace(/<\/?[a-zA-Z_][\w_-]*(?:\s[^>]*)? *>\s*/g, '');
+}
+
+function parseToolResultLibraryContent(content) {
+    if (!content || !content.startsWith("[{'type': 'text', 'text': 'Available Libraries:")) return null;
+
+    const normalized = compactMultilineText(content)
+        .replace(/^\[\{'type': 'text', 'text': '/, '')
+        .replace(/'\}\]$/, '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\'/g, "'");
+
+    return parseLibraryListToolView([{ type: 'text', text: normalized }]);
+}
+
+function renderToolResultContent(content) {
+    const parsed = parseToolResultLibraryContent(content);
+    if (!parsed) return `<div class="message-content collapse-content">${formatContent(content)}</div>`;
+
+    return `
+        <div class="message-content tool-result-readable-view collapse-content">
+            ${renderLibraryListToolView(parsed)}
+            <button type="button" class="tool-input-raw-toggle tool-result-raw-toggle" onclick="toggleToolResultRaw(this)">Show raw result</button>
+            <pre class="tool-input tool-input-raw mb-0 tool-result-raw" style="display: none">${escapeHtml(content)}</pre>
+        </div>
+    `;
+}
+
+function parseSkillDumpContent(content) {
+    if (!content || !content.startsWith('Base directory for this skill:')) return null;
+
+    const normalized = compactMultilineText(content);
+    const lines = normalized.split('\n').map(line => line.trimEnd());
+    const baseDir = lines[0].replace('Base directory for this skill:', '').trim();
+    const nonEmptyLines = lines.slice(1).filter(line => line.trim());
+    const title = nonEmptyLines[0] || 'Skill';
+    const body = nonEmptyLines.slice(1).join('\n');
+
+    return { baseDir, title, body, raw: content };
+}
+
+function renderSkillDumpContent(parsed) {
+    return `
+        <div class="message-content skill-dump-preview collapse-content">
+            <div class="tool-library-title-row">
+                <div class="tool-library-title">${escapeHtml(parsed.title)}</div>
+                <span class="tool-library-badge">Skill</span>
+            </div>
+            <div class="tool-library-id">${escapeHtml(parsed.baseDir)}</div>
+            ${parsed.body ? `<pre class="tool-input-field-value skill-dump-body">${escapeHtml(parsed.body)}</pre>` : ''}
+            <button type="button" class="tool-input-raw-toggle skill-dump-raw-toggle" onclick="toggleSkillDumpRaw(this)">Show raw</button>
+            <pre class="tool-input tool-input-raw mb-0 skill-dump-raw" style="display: none">${escapeHtml(parsed.raw)}</pre>
+        </div>
+    `;
+}
+
+function compactMultilineText(text) {
+    return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function normalizeToolInputValue(value) {
+    if (typeof value === 'string') {
+        return compactMultilineText(value);
+    }
+    if (Array.isArray(value)) {
+        return value.map(normalizeToolInputValue);
+    }
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, nestedValue]) => [key, normalizeToolInputValue(nestedValue)])
+        );
+    }
+    return value;
+}
+
+function formatToolInput(input) {
+    if (!input) return '';
+
+    if (typeof input === 'object') {
+        const normalizedInput = normalizeToolInputValue(input);
+        return JSON.stringify(normalizedInput, null, 2);
+    }
+
+    return compactMultilineText(String(input));
+}
+
+function collectMultilineToolInputFields(value, path = []) {
+    if (typeof value === 'string') {
+        const normalized = compactMultilineText(value);
+        return normalized.includes('\n') ? [{ path, value: normalized }] : [];
+    }
+    if (Array.isArray(value)) {
+        return value.flatMap((item, index) => collectMultilineToolInputFields(item, [...path, String(index)]));
+    }
+    if (value && typeof value === 'object') {
+        return Object.entries(value).flatMap(([key, nestedValue]) => collectMultilineToolInputFields(nestedValue, [...path, key]));
+    }
+    return [];
+}
+
+function parseLibraryListToolView(input) {
+    if (!Array.isArray(input)) return null;
+
+    const textBlock = input.find(item => item && item.type === 'text' && typeof item.text === 'string' && item.text.includes('Available Libraries:'));
+    if (!textBlock) return null;
+
+    const normalizedText = compactMultilineText(textBlock.text);
+    const chunks = normalizedText.split('\n----------\n').map(chunk => chunk.trim()).filter(Boolean);
+    if (chunks.length === 0) return null;
+
+    const firstChunk = chunks[0];
+    const firstLibraryStart = firstChunk.search(/\n- Title:\s*/);
+    const headerChunk = firstLibraryStart >= 0 ? firstChunk.slice(0, firstLibraryStart).trim() : firstChunk;
+    const firstLibraryChunk = firstLibraryStart >= 0 ? firstChunk.slice(firstLibraryStart + 1).trim() : '';
+    const title = headerChunk.replace(/^Available Libraries:\s*/, '').trim() || 'Available Libraries';
+    const libraryChunks = [firstLibraryChunk, ...chunks.slice(1)].filter(Boolean);
+    const libraries = libraryChunks.map(chunk => {
+        const library = {};
+        for (const line of chunk.split('\n')) {
+            const match = line.match(/^- ([^:]+):\s*(.*)$/);
+            if (match) {
+                library[match[1].trim()] = match[2].trim();
+            }
+        }
+        return Object.keys(library).length > 0 ? library : null;
+    }).filter(Boolean);
+
+    return libraries.length > 0 ? { title, libraries } : null;
+}
+
+function compactLibraryDescription(text, maxLength = 220) {
+    if (!text) return '';
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trimEnd()}…` : normalized;
+}
+
+function renderLibraryListToolView(parsed) {
+    return `
+        <div class="tool-input-readable-view">
+            <div class="tool-input-readable-title">${escapeHtml(parsed.title)}</div>
+            <div class="tool-library-list compact">
+                ${parsed.libraries.map(library => `
+                    <div class="tool-library-card">
+                        <div class="tool-library-title-row">
+                            <div class="tool-library-title">${escapeHtml(library.Title || 'Untitled')}</div>
+                            ${library['Source Reputation'] ? `<span class="tool-library-badge">${escapeHtml(library['Source Reputation'])}</span>` : ''}
+                        </div>
+                        ${library['Context7-compatible library ID'] ? `<div class="tool-library-id">${escapeHtml(library['Context7-compatible library ID'])}</div>` : ''}
+                        ${library.Description ? `<div class="tool-library-description">${escapeHtml(compactLibraryDescription(library.Description))}</div>` : ''}
+                        <div class="tool-library-meta">
+                            ${library['Code Snippets'] ? `<span class="tool-library-meta-item">Snippets: ${escapeHtml(library['Code Snippets'])}</span>` : ''}
+                            ${library['Benchmark Score'] ? `<span class="tool-library-meta-item">Score: ${escapeHtml(library['Benchmark Score'])}</span>` : ''}
+                            ${library.Versions ? `<span class="tool-library-meta-item">Versions: ${escapeHtml(library.Versions)}</span>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function collectStringValues(value, path = []) {
+    if (typeof value === 'string') {
+        return [{ path, value: compactMultilineText(value) }];
+    }
+    if (Array.isArray(value)) {
+        return value.flatMap((item, index) => collectStringValues(item, [...path, String(index)]));
+    }
+    if (value && typeof value === 'object') {
+        return Object.entries(value).flatMap(([key, nestedValue]) => collectStringValues(nestedValue, [...path, key]));
+    }
+    return [];
+}
+
+function parseSkillToolView(toolName, input) {
+    if (toolName !== 'Skill' && toolName !== 'functions.Skill') return null;
+    if (!input || typeof input !== 'object') return null;
+
+    const strings = collectStringValues(input);
+    const previewField = strings.find(field => field.value.includes('Base directory for this skill:') || field.value.includes('\n'));
+    const previewText = previewField ? previewField.value : '';
+
+    return {
+        skill: input.skill || '',
+        args: input.args || '',
+        previewText,
+    };
+}
+
+function renderSkillToolView(parsed) {
+    const compactPreview = parsed.previewText
+        ? parsed.previewText
+            .split('\n')
+            .filter(line => line.trim())
+            .join('\n')
+        : '';
+
+    return `
+        <div class="tool-input-readable-view skill-readable-preview">
+            <div class="tool-library-title-row">
+                <div class="tool-library-title">${escapeHtml(parsed.skill || 'Skill')}</div>
+                <span class="tool-library-badge">Skill</span>
+            </div>
+            ${parsed.args ? `<div class="tool-library-id">${escapeHtml(parsed.args)}</div>` : ''}
+            ${compactPreview ? `<pre class="tool-input-field-value skill-readable-body">${escapeHtml(compactPreview)}</pre>` : ''}
+        </div>
+    `;
+}
+
+function renderToolInput(toolName, input, collapsedStyle) {
+    if (!input) return '';
+
+    const toolInputText = formatToolInput(input);
+    const parsedSkill = parseSkillToolView(toolName, input);
+    const parsedLibraryList = parseLibraryListToolView(input);
+    let readableViewHtml = parsedSkill ? renderSkillToolView(parsedSkill) : (parsedLibraryList ? renderLibraryListToolView(parsedLibraryList) : '');
+
+    if (!readableViewHtml && input && typeof input === 'object') {
+        const normalizedInput = normalizeToolInputValue(input);
+        const multilineFields = collectMultilineToolInputFields(normalizedInput);
+        if (multilineFields.length > 0) {
+            readableViewHtml = `
+                <div class="tool-input-multiline-fields">
+                    ${multilineFields.map(field => `
+                        <div class="tool-input-field">
+                            <div class="tool-input-field-label">${escapeHtml(field.path.join('.'))}</div>
+                            <pre class="tool-input-field-value">${escapeHtml(field.value)}</pre>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    }
+
+    const hasCustomView = Boolean(readableViewHtml);
+
+    return `
+        <div class="collapse-content" ${collapsedStyle}>
+            ${readableViewHtml}
+            ${hasCustomView ? '<button type="button" class="tool-input-raw-toggle" onclick="toggleToolRaw(this)">Show raw JSON</button>' : ''}
+            <pre class="tool-input tool-input-raw mb-0 ${hasCustomView ? 'collapse-content' : ''}" ${hasCustomView ? 'style="display: none"' : ''}>${escapeHtml(toolInputText)}</pre>
+        </div>
+    `;
 }
 
 function formatContent(content) {
@@ -393,6 +639,45 @@ function toggleCollapse(header) {
         content.style.display = 'none';
         icon.classList.remove('bi-chevron-down');
         icon.classList.add('bi-chevron-right');
+    }
+}
+
+function toggleToolRaw(button) {
+    const raw = button.parentElement.querySelector('.tool-input-raw');
+    if (!raw) return;
+
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        button.textContent = 'Hide raw JSON';
+    } else {
+        raw.style.display = 'none';
+        button.textContent = 'Show raw JSON';
+    }
+}
+
+function toggleSkillDumpRaw(button) {
+    const raw = button.parentElement.querySelector('.skill-dump-raw');
+    if (!raw) return;
+
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        button.textContent = 'Hide raw';
+    } else {
+        raw.style.display = 'none';
+        button.textContent = 'Show raw';
+    }
+}
+
+function toggleToolResultRaw(button) {
+    const raw = button.parentElement.querySelector('.tool-result-raw');
+    if (!raw) return;
+
+    if (raw.style.display === 'none') {
+        raw.style.display = '';
+        button.textContent = 'Hide raw result';
+    } else {
+        raw.style.display = 'none';
+        button.textContent = 'Show raw result';
     }
 }
 

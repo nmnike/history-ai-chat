@@ -927,6 +927,149 @@ pre.compact-hidden-text {
     word-break: break-all;
 }
 
+.tool-input-readable-view,
+.tool-input-multiline-fields,
+.tool-input-readable-view-empty {
+    border-top: 1px solid var(--border-color);
+    background-color: color-mix(in srgb, var(--tool-bg) 35%, var(--bg-primary));
+    padding: 12px;
+}
+
+.tool-input-readable-view-empty {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.tool-input-readable-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.tool-library-list {
+    display: grid;
+    gap: 10px;
+}
+
+.tool-library-list.compact {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    align-items: start;
+}
+
+.tool-library-card,
+.tool-input-field-value {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.tool-library-card {
+    padding: 10px;
+    max-width: 100%;
+}
+
+.tool-library-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.tool-library-title {
+    font-weight: 600;
+}
+
+.tool-library-badge,
+.tool-library-meta-item {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background-color: rgba(34, 197, 94, 0.12);
+    color: var(--text-secondary);
+}
+
+.tool-library-id {
+    font-family: 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+
+.tool-library-description {
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    line-height: 1.35;
+}
+
+.tool-library-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tool-input-field + .tool-input-field {
+    margin-top: 12px;
+}
+
+.tool-input-field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-family: 'Consolas', monospace;
+}
+
+.tool-input-field-value {
+    padding: 10px;
+    margin: 0;
+    font-family: 'Consolas', monospace;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.tool-input-raw-toggle {
+    margin: 10px 12px 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.tool-input-raw {
+    margin-top: 10px !important;
+}
+
+.skill-readable-preview,
+.skill-dump-preview,
+.tool-result-readable-view {
+    display: grid;
+    gap: 8px;
+}
+
+.tool-result-readable-view {
+    white-space: normal;
+}
+
+.skill-readable-body,
+.skill-dump-body {
+    max-height: 320px;
+    overflow: auto;
+}
+
+.skill-dump-raw,
+.tool-result-raw {
+    margin-top: 10px !important;
+}
+
 /* Messages container */
 .messages {
     display: flex;
