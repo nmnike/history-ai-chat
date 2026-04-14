@@ -12,7 +12,7 @@ if errorlevel 1 (
 
 echo.
 echo Running PyInstaller...
-pyinstaller build.spec --clean
+python -m PyInstaller build.spec --clean
 
 echo.
 if exist "dist\history-ai-chat.exe" (
