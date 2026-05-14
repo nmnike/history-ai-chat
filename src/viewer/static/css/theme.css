@@ -515,28 +515,11 @@ pre.compact-hidden-text {
     border-radius: 2px;
 }
 
-/* Brand icon with layered effect */
 .brand-icon {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-}
-
-.brand-icon .bi-stars {
-    position: absolute;
-    font-size: 1rem;
-    color: #fbbf24;
-    top: -4px;
-    right: -4px;
-    text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
-}
-
-.brand-icon .bi-chat-text-fill {
-    font-size: 1.25rem;
-    color: #3b82f6;
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 6px rgba(59, 130, 246, 0.35));
 }
 
 .version-badge {
