@@ -215,7 +215,7 @@ async def project_page(
     request: Request,
     project_id: str,
     platform: str = Query(default="claude"),
-    date: str = Query(default="week")
+    date: str = Query(default="today")
 ):
     """Project page showing sessions"""
     return templates.TemplateResponse(

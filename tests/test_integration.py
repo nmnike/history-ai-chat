@@ -48,17 +48,17 @@ def test_api_search_empty_query():
 
 
 def test_dashboard_defaults_to_last_7_days():
-    """Dashboard should default date filter to last 7 days"""
+    """Dashboard should default date filter to today"""
     response = client.get("/")
     assert response.status_code == 200
-    assert "document.getElementById('date-filter').value = 'week';" in response.text
+    assert "document.getElementById('date-filter').value = 'today';" in response.text
 
 
 def test_project_page_defaults_to_last_7_days():
-    """Project page should default date filter to last 7 days"""
+    """Project page should default date filter to today"""
     response = client.get("/project/test-project")
     assert response.status_code == 200
-    assert 'const initialDateFilter = "week";' in response.text
+    assert 'const initialDateFilter = "today";' in response.text
     assert 'function formatCost(cost)' in response.text
 
 
