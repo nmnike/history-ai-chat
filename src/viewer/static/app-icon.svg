@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="surface" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="surface" x1="5" y1="4" x2="59" y2="60" gradientUnits="userSpaceOnUse">
       <stop stop-color="#6366F1"/>
       <stop offset="0.55" stop-color="#3B82F6"/>
       <stop offset="1" stop-color="#06B6D4"/>
     </linearGradient>
-    <filter id="shadow" x="6" y="7" width="52" height="52" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+    <filter id="shadow" x="8" y="9" width="48" height="48" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#1E1B4B" flood-opacity="0.24"/>
     </filter>
   </defs>
-  <rect x="8" y="8" width="48" height="48" rx="14" fill="url(#surface)"/>
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="url(#surface)"/>
   <g filter="url(#shadow)">
-    <path d="M18 24C18 20.686 20.686 18 24 18H40C43.314 18 46 20.686 46 24V33C46 36.314 43.314 39 40 39H32.828L26.586 45.243C25.956 45.873 24.879 45.427 24.879 44.536V39H24C20.686 39 18 36.314 18 33V24Z" fill="white"/>
+    <path d="M14 23C14 19.134 17.134 16 21 16H41C44.866 16 48 19.134 48 23V34C48 37.866 44.866 41 41 41H32.95L25.707 48.243C25.077 48.873 24 48.427 24 47.536V41H21C17.134 41 14 37.866 14 34V23Z" fill="white"/>
   </g>
-  <path d="M26 27H38" stroke="#4F46E5" stroke-width="3" stroke-linecap="round"/>
-  <path d="M26 33H34" stroke="#06B6D4" stroke-width="3" stroke-linecap="round"/>
-  <path d="M45 15L46.35 18.65L50 20L46.35 21.35L45 25L43.65 21.35L40 20L43.65 18.65L45 15Z" fill="#FDE68A"/>
-  <circle cx="48" cy="31" r="2.5" fill="#A7F3D0"/>
+  <path d="M23 26H39" stroke="#4F46E5" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M23 33H35" stroke="#06B6D4" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M47 10L48.7 14.3L53 16L48.7 17.7L47 22L45.3 17.7L41 16L45.3 14.3L47 10Z" fill="#FDE68A"/>
+  <circle cx="51" cy="31" r="3" fill="#A7F3D0"/>
 </svg>
