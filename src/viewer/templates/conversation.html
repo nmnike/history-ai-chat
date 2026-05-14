@@ -77,6 +77,7 @@ const TOOL_COLLAPSE_LINE_THRESHOLD = 30;
 const TOOL_COLLAPSE_CHAR_THRESHOLD = 4000;
 let allMessages = [];
 let activeFilters = new Set();
+let topLevelRenderState = { lastToolName: '', lastSkillName: '' };
 
 function shouldExpandToolContent(content) {
     if (!content) return true;
@@ -179,7 +180,38 @@ function renderMessages(messages, subagents = []) {
         return;
     }
 
-    container.innerHTML = renderMessageBubbles(messages) + subagents.map(renderSubagentBlock).join('');
+    topLevelRenderState = { lastToolName: '', lastSkillName: '' };
+    const timeline = buildTimelineItems(messages, subagents);
+    container.innerHTML = timeline.map(item => item.kind === 'subagent' ? renderSubagentBlock(item.subagent) : renderMessageBubble(item.message).html).join('');
+}
+
+function parseTimelineTimestamp(value) {
+    if (!value) return Number.POSITIVE_INFINITY;
+    const timestamp = new Date(value).getTime();
+    return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp;
+}
+
+function buildTimelineItems(messages, subagents = []) {
+    const messageItems = messages.map((message, index) => ({
+        kind: 'message',
+        message,
+        sortTime: parseTimelineTimestamp(message.timestamp),
+        sortKind: 0,
+        sortIndex: index,
+    }));
+    const subagentItems = subagents.map((subagent, index) => ({
+        kind: 'subagent',
+        subagent,
+        sortTime: parseTimelineTimestamp(subagent.created_at || subagent.ended_at || ((subagent.messages || [])[0] || {}).timestamp),
+        sortKind: 1,
+        sortIndex: index,
+    }));
+
+    return [...messageItems, ...subagentItems].sort((a, b) => {
+        if (a.sortTime !== b.sortTime) return a.sortTime - b.sortTime;
+        if (a.sortKind !== b.sortKind) return a.sortKind - b.sortKind;
+        return a.sortIndex - b.sortIndex;
+    });
 }
 
 function subagentFilterRole(msg) {
@@ -199,7 +231,20 @@ function renderMessageBubbles(messages, options = {}) {
     let lastSkillName = '';
 
     return normalizedMessages.map(msg => {
-        const filterRole = msg.filter_role || msg.role;
+        const rendered = renderMessageBubble(msg, options.subagent ? {
+            subagent: true,
+            lastToolName,
+            lastSkillName,
+        } : undefined);
+        lastToolName = rendered.lastToolName;
+        lastSkillName = rendered.lastSkillName;
+        return rendered.html;
+    }).join('');
+}
+
+function renderMessageBubble(msg, stateOverride) {
+    const renderState = stateOverride || topLevelRenderState;
+    const filterRole = msg.filter_role || msg.role;
         const isUser = filterRole === 'user';
         const isCompacted = msg.message_type === 'compacted';
         const isSystem = msg.role === 'system' && !isCompacted;
@@ -211,9 +256,9 @@ function renderMessageBubbles(messages, options = {}) {
 
         // Track tool_name for tool_result association
         if (msg.tool_name) {
-            lastToolName = msg.tool_name;
+            renderState.lastToolName = msg.tool_name;
         }
-        const toolNameForFilter = isToolResult ? lastToolName : (msg.tool_name || '');
+        const toolNameForFilter = isToolResult ? renderState.lastToolName : (msg.tool_name || '');
 
         // Extract MCP name for filtering (e.g., "context7" from "mcp__context7__query-docs")
         let mcpNameForFilter = '';
@@ -240,10 +285,10 @@ function renderMessageBubbles(messages, options = {}) {
             currentSkillNameForFilter = msg.content.replace('Launching skill:', '').trim();
         }
         if (currentSkillNameForFilter) {
-            lastSkillName = currentSkillNameForFilter;
+            renderState.lastSkillName = currentSkillNameForFilter;
         }
         const isLastSkillTool = toolNameForFilter === 'Skill' || toolNameForFilter === 'functions.Skill';
-        const skillNameForFilter = isToolResult && isLastSkillTool ? lastSkillName : currentSkillNameForFilter;
+        const skillNameForFilter = isToolResult && isLastSkillTool ? renderState.lastSkillName : currentSkillNameForFilter;
 
         const toolResultExpanded = isToolResult ? shouldExpandToolContent(msg.content) : true;
         const messageExpanded = isToolResult ? toolResultExpanded : true;
@@ -324,19 +369,22 @@ function renderMessageBubbles(messages, options = {}) {
             `;
         }
 
-        return `
-            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.filter_role || msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
-                <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
-                    <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
-                    ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
-                    ${msg.model ? `<span class="badge bg-dark ms-1" style="font-size: 0.65rem;" title="Model">${escapeHtml(msg.model)}${msg.effort ? ' · ' + escapeHtml(msg.effort) : ''}</span>` : ''}
-                    ${!isUser && (msg.input_tokens || msg.output_tokens) ? `<span class="badge bg-success ms-1" style="font-size: 0.65rem;">${formatTokens(msg.input_tokens || 0)}/${formatTokens(msg.output_tokens || 0)}</span>` : ''}
-                    <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
+        return {
+            html: `
+                <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.filter_role || msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
+                    <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
+                        <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
+                        ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
+                        ${msg.model ? `<span class="badge bg-dark ms-1" style="font-size: 0.65rem;" title="Model">${escapeHtml(msg.model)}${msg.effort ? ' · ' + escapeHtml(msg.effort) : ''}</span>` : ''}
+                        ${!isUser && (msg.input_tokens || msg.output_tokens) ? `<span class="badge bg-success ms-1" style="font-size: 0.65rem;">${formatTokens(msg.input_tokens || 0)}/${formatTokens(msg.output_tokens || 0)}</span>` : ''}
+                        <i class="bi ${collapsedIcon} collapse-icon ms-auto"></i>
+                    </div>
+                    <div class="message-body collapse-content" ${collapsedStyle}>${contentHtml}</div>
                 </div>
-                <div class="message-body collapse-content" ${collapsedStyle}>${contentHtml}</div>
-            </div>
-        `;
-    }).join('');
+            `,
+            lastToolName: renderState.lastToolName,
+            lastSkillName: renderState.lastSkillName,
+        };
 }
 
 function renderSubagentBlock(subagent) {

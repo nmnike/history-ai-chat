@@ -542,7 +542,10 @@ def test_conversation_template_supports_subagent_blocks():
     assert "const subagents = data.subagents || [];" in html
     assert "const aggregateMessages = messages.concat(...subagents.map(sa => normalizeSubagentMessages(sa.messages || [])));" in html
     assert "renderMessages(messages, subagents);" in html
-    assert "function renderMessageBubbles(messages" in html
+    assert "function buildTimelineItems(messages, subagents = [])" in html
+    assert "const timeline = buildTimelineItems(messages, subagents);" in html
+    assert "timeline.map(item => item.kind === 'subagent' ? renderSubagentBlock(item.subagent) : renderMessageBubble(item.message).html).join('');" in html
+    assert "function renderMessageBubble(msg, stateOverride)" in html
     assert "function renderSubagentBlock(subagent)" in html
     assert "subagent-block" in html
     assert "subagent-body collapse-content" in html
@@ -701,6 +704,14 @@ def test_conversation_template_routes_all_tool_results_through_tool_result_rende
     assert 'contentHtml += renderToolResultContent(msg.content);' in response.text
     assert 'if (parsedToolResultContent) {' not in response.text
 
+
+
+def test_subagent_block_uses_dark_background_styles():
+    css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
+    assert '.subagent-block {' in css_text
+    assert 'background: rgba(71, 85, 105, 0.24);' in css_text
+    assert 'border: 1px solid rgba(148, 163, 184, 0.34);' in css_text
+    assert 'color: inherit;' in css_text
 
 
 def test_conversation_template_supports_compact_assistant_content_preview():
