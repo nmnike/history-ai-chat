@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone, timedelta
-from viewer.parsers.claude import Session, Message
+from viewer.parsers.claude import Session, Message, SubagentSession
 from viewer.main import format_token_count, export_to_markdown, to_local_datetime
 
 
@@ -161,6 +161,54 @@ def test_export_markdown_compacted_label():
     result = export_to_markdown(session)
 
     assert "### Context Compacted • 14:30:00" in result
+
+
+def test_export_markdown_includes_subagents_as_sections():
+    base = datetime(2026, 3, 17, 14, 30, 0)
+    session = Session(
+        id="test-session-123",
+        project_path="/test/path",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            make_message("user", "Main request", timestamp=base),
+            make_message("assistant", "Main answer", timestamp=base + timedelta(minutes=1), input_tokens=100, output_tokens=10),
+        ],
+        subagents=[
+            SubagentSession(
+                id="agent-abc",
+                agent_type="Explore",
+                description="Inspect docs",
+                created_at=base + timedelta(minutes=2),
+                ended_at=base + timedelta(minutes=3),
+                messages=[
+                    make_message(
+                        "assistant",
+                        "Subagent answer",
+                        timestamp=base + timedelta(minutes=2),
+                        input_tokens=200,
+                        output_tokens=20,
+                        tool_name="mcp__context7__query-docs",
+                    )
+                ],
+            )
+        ],
+    )
+
+    result = export_to_markdown(session)
+
+    assert "**Tokens:** Input: 300 • Output: 30" in result
+    assert "👤 1 user" in result
+    assert "🤖 2 assistant" in result
+    assert "context7: 1" in result
+    assert "### User • 14:30:00" in result
+    assert "Main request" in result
+    assert "## Subagent: Explore" in result
+    assert "**ID:** agent-abc" in result
+    assert "**Description:** Inspect docs" in result
+    assert "### Assistant • 14:32:00 • 200/20 tokens" in result
+    assert "Subagent answer" in result
+
 
 
 def test_to_local_datetime_utc_conversion():

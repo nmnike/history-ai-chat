@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from viewer.parsers import Message, Session
+from viewer.parsers.claude import SubagentSession
 from viewer.pricing import calculate_message_cost, calculate_session_cost
 
 
@@ -126,6 +127,34 @@ def test_calculate_session_cost_sums_multiple_models():
         messages=[
             make_message("Sonnet 4.6", input_tokens=1000, output_tokens=100),
             make_message("gpt-5.4", input_tokens=2000, output_tokens=200, cache_read_tokens=500),
+        ],
+    )
+
+    cost = calculate_session_cost(session)
+
+    assert cost["available"] is True
+    assert cost["providers"] == ["claude", "openai"]
+    assert cost["models"] == ["Sonnet 4.6", "gpt-5.4"]
+    assert cost["input_tokens"] == 3000
+    assert cost["output_tokens"] == 300
+    assert cost["cache_read_tokens"] == 500
+    assert cost["cache_creation_tokens"] == 0
+    assert round(cost["total_usd"], 6) == 0.008565
+
+
+
+def test_calculate_session_cost_includes_subagents():
+    session = Session(
+        id="s-subagents",
+        project_path="/tmp/project",
+        project_name="project",
+        created_at=datetime(2026, 4, 13, 12, 0, 0),
+        messages=[make_message("Sonnet 4.6", input_tokens=1000, output_tokens=100)],
+        subagents=[
+            SubagentSession(
+                id="agent-abc",
+                messages=[make_message("gpt-5.4", input_tokens=2000, output_tokens=200, cache_read_tokens=500)],
+            )
         ],
     )
 

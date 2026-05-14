@@ -504,3 +504,141 @@ def test_get_projects_formats_windows_style_display_name(tmp_path):
         "path": str(project_dir),
         "session_count": 1,
     }]
+
+
+def test_get_sessions_loads_nested_subagents(tmp_path):
+    project_dir = tmp_path / "demo-project"
+    project_dir.mkdir()
+    (project_dir / "parent-session.jsonl").write_text(
+        json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": "Main question"},
+            "uuid": "main-user",
+            "timestamp": "2026-04-10T10:00:00.000Z",
+            "sessionId": "parent-session",
+            "cwd": "/demo/project"
+        }) + "\n" +
+        json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "main-assistant-msg",
+                "role": "assistant",
+                "model": "claude-sonnet-4-6",
+                "content": [{"type": "text", "text": "Main answer"}],
+                "usage": {"input_tokens": 10, "output_tokens": 5}
+            },
+            "uuid": "main-assistant",
+            "timestamp": "2026-04-10T10:01:00.000Z",
+            "sessionId": "parent-session",
+            "cwd": "/demo/project"
+        }) + "\n"
+    )
+    (project_dir / "agent-top-level.jsonl").write_text(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "Should be ignored as parent session"},
+        "uuid": "ignored-user",
+        "timestamp": "2026-04-10T09:00:00.000Z",
+        "sessionId": "ignored-agent",
+        "cwd": "/demo/project"
+    }) + "\n")
+
+    subagents_dir = project_dir / "parent-session" / "subagents"
+    subagents_dir.mkdir(parents=True)
+    (subagents_dir / "agent-abc.meta.json").write_text(json.dumps({
+        "agentType": "Explore",
+        "description": "Inspect parser format"
+    }))
+    (subagents_dir / "agent-abc.jsonl").write_text(
+        json.dumps({
+            "parentUuid": None,
+            "isSidechain": True,
+            "agentId": "abc",
+            "type": "user",
+            "message": {"role": "user", "content": "Subagent prompt"},
+            "uuid": "sub-user",
+            "timestamp": "2026-04-10T10:02:00.000Z",
+            "sessionId": "parent-session",
+            "cwd": "/demo/project"
+        }) + "\n" +
+        json.dumps({
+            "parentUuid": "sub-user",
+            "isSidechain": True,
+            "agentId": "abc",
+            "type": "assistant",
+            "message": {
+                "id": "sub-assistant-msg",
+                "role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": [{"type": "text", "text": "Subagent answer"}],
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "cache_read_input_tokens": 30,
+                    "cache_creation_input_tokens": 40
+                }
+            },
+            "uuid": "sub-assistant",
+            "timestamp": "2026-04-10T10:03:00.000Z",
+            "sessionId": "parent-session",
+            "cwd": "/demo/project"
+        }) + "\n"
+    )
+
+    sessions = ClaudeParser(str(tmp_path)).get_sessions("demo-project")
+
+    assert len(sessions) == 1
+    session = sessions[0]
+    assert session.id == "parent-session"
+    assert [m.content for m in session.messages] == ["Main question", "Main answer"]
+    assert len(session.subagents) == 1
+    subagent = session.subagents[0]
+    assert subagent.id == "agent-abc"
+    assert subagent.agent_type == "Explore"
+    assert subagent.description == "Inspect parser format"
+    assert [m.content for m in subagent.messages] == ["Subagent prompt", "Subagent answer"]
+    assistant = subagent.messages[1]
+    assert assistant.input_tokens == 100
+    assert assistant.output_tokens == 20
+    assert assistant.cache_read_tokens == 30
+    assert assistant.cache_creation_tokens == 40
+    assert assistant.model == "Opus 4.6"
+
+
+def test_get_projects_ignores_top_level_agent_jsonl(tmp_path):
+    project_dir = tmp_path / "demo-project"
+    project_dir.mkdir()
+    (project_dir / "parent-session.jsonl").write_text(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "Hi"},
+        "uuid": "msg-1",
+        "timestamp": "2026-04-10T10:00:00.000Z",
+        "sessionId": "parent-session",
+        "cwd": "/demo/project"
+    }) + "\n")
+    (project_dir / "agent-orphan.jsonl").write_text(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "Ignore me"},
+        "uuid": "agent-msg-1",
+        "timestamp": "2026-04-10T10:01:00.000Z",
+        "sessionId": "agent-orphan",
+        "cwd": "/demo/project"
+    }) + "\n")
+    subagents_dir = project_dir / "parent-session" / "subagents"
+    subagents_dir.mkdir(parents=True)
+    (subagents_dir / "agent-abc.jsonl").write_text(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "Nested subagent"},
+        "uuid": "sub-msg-1",
+        "timestamp": "2026-04-10T10:02:00.000Z",
+        "sessionId": "parent-session",
+        "cwd": "/demo/project"
+    }) + "\n")
+
+    projects = ClaudeParser(str(tmp_path)).get_projects()
+
+    assert projects == [{
+        "id": "demo-project",
+        "name": "/demo/project",
+        "path": str(project_dir),
+        "session_count": 1,
+    }]

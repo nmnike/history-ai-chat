@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from viewer.main import app, cache_db
 from viewer.parsers import Session, Message
+from viewer.parsers.claude import SubagentSession
 
 
 client = TestClient(app)
@@ -206,6 +207,152 @@ def test_favorites_api():
     assert response.json()["is_favorite"] is False
 
 
+def test_session_to_dict_aggregates_subagent_messages():
+    from viewer.main import session_to_dict
+
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-subagents",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="main",
+                uuid="main-1",
+                timestamp=base,
+                session_id="sess-subagents",
+                project_path="/tmp/test-project",
+                model="Sonnet 4.6",
+                input_tokens=100,
+                output_tokens=10,
+            )
+        ],
+        subagents=[
+            SubagentSession(
+                id="agent-abc",
+                agent_type="Explore",
+                description="Inspect things",
+                created_at=base + timedelta(minutes=1),
+                ended_at=base + timedelta(minutes=3),
+                messages=[
+                    Message(
+                        role="assistant",
+                        content="sub",
+                        uuid="sub-1",
+                        timestamp=base + timedelta(minutes=2),
+                        session_id="sess-subagents",
+                        project_path="/tmp/test-project",
+                        model="Sonnet 4.6",
+                        input_tokens=200,
+                        output_tokens=20,
+                    ),
+                    Message(
+                        role="assistant",
+                        content="tool",
+                        uuid="sub-2",
+                        timestamp=base + timedelta(minutes=3),
+                        session_id="sess-subagents",
+                        project_path="/tmp/test-project",
+                        message_type="tool_use",
+                        tool_name="mcp__context7__query-docs",
+                    ),
+                ],
+            )
+        ],
+    )
+
+    payload = session_to_dict(session, "claude")
+
+    assert payload["message_count"] == 3
+    assert payload["input_tokens"] == 300
+    assert payload["output_tokens"] == 30
+    assert payload["ended_at"] == "2026-04-10T12:03:00"
+    assert payload["mcps"] == [{"name": "context7", "count": 1}]
+    assert payload["subagent_count"] == 1
+    assert payload["subagent_message_count"] == 2
+
+
+def test_api_conversation_returns_subagents_separately(monkeypatch):
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-api-subagents",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="user",
+                content="main request",
+                uuid="main-1",
+                timestamp=base,
+                session_id="sess-api-subagents",
+                project_path="/tmp/test-project",
+            ),
+        ],
+        subagents=[
+            SubagentSession(
+                id="agent-abc",
+                agent_type="Explore",
+                description="Inspect parser format",
+                created_at=base + timedelta(minutes=1),
+                ended_at=base + timedelta(minutes=2),
+                model="gpt-5.4",
+                effort="high",
+                messages=[
+                    Message(
+                        role="assistant",
+                        content="subagent answer",
+                        uuid="sub-1",
+                        timestamp=base + timedelta(minutes=1),
+                        session_id="sess-api-subagents",
+                        project_path="/tmp/test-project",
+                        input_tokens=200,
+                        output_tokens=20,
+                        cache_read_tokens=30,
+                        cache_creation_tokens=40,
+                    )
+                ],
+            )
+        ],
+    )
+
+    class StubClaudeParser:
+        def get_sessions(self, project_id):
+            assert project_id == "test-project"
+            return [session]
+
+    monkeypatch.setattr("viewer.main.claude_parser", StubClaudeParser())
+
+    response = client.get("/api/conversation/sess-api-subagents?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert [message["uuid"] for message in payload["messages"]] == ["main-1"]
+    assert payload["session"]["message_count"] == 2
+    assert payload["session"]["input_tokens"] == 200
+    assert payload["session"]["output_tokens"] == 20
+    assert payload["session"]["subagent_count"] == 1
+    assert payload["session"]["subagent_message_count"] == 1
+
+    subagent = payload["subagents"][0]
+    assert subagent["id"] == "agent-abc"
+    assert subagent["agent_type"] == "Explore"
+    assert subagent["description"] == "Inspect parser format"
+    assert subagent["created_at"] == "2026-04-10T12:01:00"
+    assert subagent["ended_at"] == "2026-04-10T12:02:00"
+    assert subagent["message_count"] == 1
+    assert subagent["input_tokens"] == 200
+    assert subagent["output_tokens"] == 20
+    assert subagent["cache_read_tokens"] == 30
+    assert subagent["cache_creation_tokens"] == 40
+    assert subagent["model"] == "gpt-5.4"
+    assert subagent["effort"] == "high"
+    assert subagent["messages"][0]["uuid"] == "sub-1"
+
+
+
 def test_api_conversation_returns_timing_and_tool_metadata(monkeypatch):
     """API should return session timing and tool usage metadata"""
     base = datetime(2026, 4, 10, 12, 0, 0)
@@ -280,6 +427,143 @@ def test_api_conversation_parses_skills_from_command_name_tags(monkeypatch):
     skills = payload["skills"]
     assert len(skills) == 1
     assert {"name": "superpowers-brainstorming", "count": 1} in skills
+
+
+def test_export_json_returns_subagents_separately():
+    from viewer.main import export_to_json
+
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="sess-json-subagents",
+        project_path="/tmp/test-project",
+        project_name="test-project",
+        created_at=base,
+        messages=[
+            Message(
+                role="user",
+                content="main request",
+                uuid="main-1",
+                timestamp=base,
+                session_id="sess-json-subagents",
+                project_path="/tmp/test-project",
+            )
+        ],
+        subagents=[
+            SubagentSession(
+                id="agent-abc",
+                agent_type="Explore",
+                description="Inspect docs",
+                messages=[
+                    Message(
+                        role="assistant",
+                        content="subagent answer",
+                        uuid="sub-1",
+                        timestamp=base + timedelta(minutes=1),
+                        session_id="sess-json-subagents",
+                        project_path="/tmp/test-project",
+                        input_tokens=200,
+                        output_tokens=20,
+                    )
+                ],
+            )
+        ],
+    )
+
+    payload = export_to_json(session)
+
+    assert [message["uuid"] for message in payload["messages"]] == ["main-1"]
+    assert payload["message_count"] == 2
+    assert payload["input_tokens"] == 200
+    assert payload["output_tokens"] == 20
+    assert payload["subagents"][0]["id"] == "agent-abc"
+    assert payload["subagents"][0]["agent_type"] == "Explore"
+    assert payload["subagents"][0]["messages"][0]["uuid"] == "sub-1"
+
+
+
+def test_export_html_escapes_subagent_content():
+    from viewer.main import export_to_html
+
+    base = datetime(2026, 4, 10, 12, 0, 0)
+    session = Session(
+        id="<session>",
+        project_path="/tmp/test-project",
+        project_name="<project>",
+        created_at=base,
+        messages=[
+            Message(
+                role="assistant",
+                content="<script>alert('main')</script>",
+                uuid="main-1",
+                timestamp=base,
+                session_id="sess-html-subagents",
+                project_path="/tmp/test-project",
+                thinking_text="<b>thinking</b>",
+            )
+        ],
+        subagents=[
+            SubagentSession(
+                id="agent-<abc>",
+                agent_type="<Explore>",
+                description="<img src=x onerror=alert(1)>",
+                messages=[
+                    Message(
+                        role="assistant",
+                        content="<script>alert('sub')</script>",
+                        uuid="sub-1",
+                        timestamp=base + timedelta(minutes=1),
+                        session_id="sess-html-subagents",
+                        project_path="/tmp/test-project",
+                        thinking_text="<i>subthinking</i>",
+                    )
+                ],
+            )
+        ],
+    )
+
+    html = export_to_html(session)
+
+    assert "<script>alert" not in html
+    assert "<img src=x" not in html
+    assert "&lt;script&gt;alert" in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+    assert "agent-&lt;abc&gt;" in html
+    assert "Subagent: &lt;Explore&gt;" in html
+    assert "&lt;b&gt;thinking&lt;/b&gt;" in html
+    assert "&lt;i&gt;subthinking&lt;/i&gt;" in html
+
+
+
+def test_conversation_template_supports_subagent_blocks():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "const subagents = data.subagents || [];" in html
+    assert "const aggregateMessages = messages.concat(...subagents.map(sa => normalizeSubagentMessages(sa.messages || [])));" in html
+    assert "renderMessages(messages, subagents);" in html
+    assert "function renderMessageBubbles(messages" in html
+    assert "function renderSubagentBlock(subagent)" in html
+    assert "subagent-block" in html
+    assert "subagent-body collapse-content" in html
+    assert "session.input_tokens" in html
+    assert "session.output_tokens" in html
+    assert "session.cache_read_tokens" in html
+    assert "session.cache_creation_tokens" in html
+    assert "block.style.display = hasVisibleMessage ? '' : 'none';" in html
+
+
+def test_conversation_template_filters_subagent_messages_as_assistant():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "const aggregateMessages = messages.concat(...subagents.map(sa => normalizeSubagentMessages(sa.messages || [])));" in html
+    assert "function normalizeSubagentMessages(messages)" in html
+    assert "return { ...msg, filter_role: subagentFilterRole(msg) };" in html
+    assert "${msg.filter_role || msg.role}" in html
+    assert "renderMessageBubbles(messages, { subagent: true })" in html
+
 
 
 def test_conversation_template_contains_metadata_and_multi_filter_ui():
@@ -595,7 +879,7 @@ def test_conversation_template_contains_header_metrics_ui():
     assert response.status_code == 200
     assert 'id="session-meta-badges"' in response.text
     assert 'id="session-header-metrics"' in response.text
-    assert 'renderSessionHeaderMetrics(messages, session);' in response.text
+    assert 'renderSessionHeaderMetrics(aggregateMessages, session);' in response.text
     assert 'function renderSessionHeaderMetrics(messages, session)' in response.text
     assert 'token-badge-wrapper position-relative d-inline-block' in response.text
     assert 'token-tooltip' in response.text

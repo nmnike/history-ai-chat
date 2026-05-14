@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .parsers import ClaudeParser, CodexParser, Session, Message
+from .parsers.claude import aggregate_messages
 from .db.cache import CacheDB
 from .pricing import calculate_session_cost
 
@@ -29,7 +30,7 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 cache_db = CacheDB(cache_dir / "cache.db")
 
 # FastAPI app
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 app = FastAPI(
     title="Claude Codex Viewer",
     description="Web viewer for Claude Code and Codex CLI conversation history",
@@ -65,9 +66,9 @@ SKILL_WHITELIST = {
 
 def get_ended_at(session: Session) -> Optional[datetime]:
     """Get session end time from session.ended_at or max message timestamp"""
+    timestamps = [m.timestamp for m in aggregate_messages(session) if m.timestamp]
     if session.ended_at:
-        return session.ended_at
-    timestamps = [m.timestamp for m in session.messages if m.timestamp]
+        timestamps.append(session.ended_at)
     return max(timestamps) if timestamps else None
 
 
@@ -90,7 +91,7 @@ def classify_tools(session: Session) -> tuple[list[dict], list[dict]]:
     mcp_counter = Counter()
     skill_counter = Counter()
 
-    for msg in session.messages:
+    for msg in aggregate_messages(session):
         # Check tool_name for MCP and function-based skills
         if msg.tool_name:
             # MCP: starts with "mcp__", second segment is MCP name
@@ -144,11 +145,12 @@ def get_project_display_name(project_id: str, platform: str) -> str:
 
 def session_to_dict(session: Session, platform: str) -> dict:
     """Convert Session to dict for JSON response"""
-    # Aggregate tokens from all messages
-    input_tokens = sum(m.input_tokens for m in session.messages)
-    output_tokens = sum(m.output_tokens for m in session.messages)
-    cache_read_tokens = sum(m.cache_read_tokens for m in session.messages)
-    cache_creation_tokens = sum(m.cache_creation_tokens for m in session.messages)
+    messages = aggregate_messages(session)
+    input_tokens = sum(m.input_tokens for m in messages)
+    output_tokens = sum(m.output_tokens for m in messages)
+    cache_read_tokens = sum(m.cache_read_tokens for m in messages)
+    cache_creation_tokens = sum(m.cache_creation_tokens for m in messages)
+    subagent_message_count = sum(len(subagent.messages) for subagent in session.subagents)
 
     # Compute ended_at, duration, and tool classification
     ended_at = get_ended_at(session)
@@ -167,11 +169,13 @@ def session_to_dict(session: Session, platform: str) -> dict:
         "duration_seconds": duration_seconds,
         "mcps": mcps,
         "skills": skills,
-        "message_count": len(session.messages),
+        "message_count": len(messages),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read_tokens,
         "cache_creation_tokens": cache_creation_tokens,
+        "subagent_count": len(session.subagents),
+        "subagent_message_count": subagent_message_count,
         "model": session.model,
         "effort": session.effort,
         "custom_title": session.custom_title,
@@ -199,6 +203,25 @@ def message_to_dict(msg: Message) -> dict:
         "hidden_messages": msg.hidden_messages,
         "model": msg.model,
         "effort": msg.effort
+    }
+
+
+def subagent_to_dict(subagent) -> dict:
+    messages = subagent.messages
+    return {
+        "id": subagent.id,
+        "agent_type": subagent.agent_type,
+        "description": subagent.description,
+        "created_at": subagent.created_at.isoformat() if subagent.created_at else None,
+        "ended_at": subagent.ended_at.isoformat() if subagent.ended_at else None,
+        "message_count": len(messages),
+        "input_tokens": sum(m.input_tokens for m in messages),
+        "output_tokens": sum(m.output_tokens for m in messages),
+        "cache_read_tokens": sum(m.cache_read_tokens for m in messages),
+        "cache_creation_tokens": sum(m.cache_creation_tokens for m in messages),
+        "model": subagent.model,
+        "effort": subagent.effort,
+        "messages": [message_to_dict(m) for m in messages],
     }
 
 
@@ -304,22 +327,22 @@ async def list_projects(date: str = Query(default="week")):
         total_input = sum(
             msg.input_tokens
             for s in sessions
-            for msg in s.messages
+            for msg in aggregate_messages(s)
         )
         total_output = sum(
             msg.output_tokens
             for s in sessions
-            for msg in s.messages
+            for msg in aggregate_messages(s)
         )
         total_cache_read = sum(
             msg.cache_read_tokens
             for s in sessions
-            for msg in s.messages
+            for msg in aggregate_messages(s)
         )
         total_cache_creation = sum(
             msg.cache_creation_tokens
             for s in sessions
-            for msg in s.messages
+            for msg in aggregate_messages(s)
         )
 
         if session_count > 0 or filter_mode == "all":
@@ -355,17 +378,18 @@ async def list_projects(date: str = Query(default="week")):
 
         # Aggregate tokens for codex session
         codex_projects[project_name]["session_count"] += 1
+        messages = aggregate_messages(session)
         codex_projects[project_name]["total_input_tokens"] += sum(
-            msg.input_tokens for msg in session.messages
+            msg.input_tokens for msg in messages
         )
         codex_projects[project_name]["total_output_tokens"] += sum(
-            msg.output_tokens for msg in session.messages
+            msg.output_tokens for msg in messages
         )
         codex_projects[project_name]["total_cache_read_tokens"] += sum(
-            msg.cache_read_tokens for msg in session.messages
+            msg.cache_read_tokens for msg in messages
         )
         codex_projects[project_name]["total_cache_creation_tokens"] += sum(
-            msg.cache_creation_tokens for msg in session.messages
+            msg.cache_creation_tokens for msg in messages
         )
 
     projects.extend(codex_projects.values())
@@ -497,7 +521,8 @@ async def get_conversation(
 
     return {
         "session": session_to_dict(session, platform),
-        "messages": [message_to_dict(m) for m in session.messages]
+        "messages": [message_to_dict(m) for m in session.messages],
+        "subagents": [subagent_to_dict(subagent) for subagent in session.subagents],
     }
 
 
@@ -532,7 +557,7 @@ async def search(
     def search_in_session(session: Session, platform_name: str, project_id: str = "") -> list[dict]:
         """Search in session messages across all text fields"""
         matches = []
-        for msg in session.messages:
+        for msg in aggregate_messages(session):
             if message_matches(msg, query):
                 # Build content preview from all available text fields
                 preview_parts = []
@@ -616,7 +641,7 @@ async def add_favorite(
             "project": session.project_name or project_id,
             "platform": platform,
             "preview": session.first_message or "",
-            "message_count": len(session.messages)
+            "message_count": len(aggregate_messages(session))
         })
 
     cache_db.add_favorite(session_id)
@@ -710,19 +735,54 @@ def format_message_role(msg: Message) -> str:
     return msg.role.capitalize()
 
 
+def append_markdown_message(lines: list[str], msg: Message) -> None:
+    if msg.role == "tool_result":
+        lines.append(f"\n### Tool Result\n")
+        if msg.content:
+            try:
+                json_data = json.loads(msg.content)
+                lines.append(f"```json\n{json.dumps(json_data, indent=2, ensure_ascii=False)}\n```")
+            except (json.JSONDecodeError, TypeError):
+                lines.append(f"```\n{msg.content}\n```")
+    else:
+        local_ts = to_local_datetime(msg.timestamp)
+        time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
+        role_label = format_message_role(msg)
+        token_str = ""
+
+        if msg.role == "assistant" and (msg.input_tokens > 0 or msg.output_tokens > 0):
+            token_str = f" • {format_token_count(msg.input_tokens)}/{format_token_count(msg.output_tokens)} tokens"
+
+        lines.append(f"\n### {role_label}{time_str}{token_str}\n")
+
+        if msg.content:
+            lines.append(f"```\n{msg.content}\n```")
+
+        if msg.role == "assistant":
+            if msg.thinking_text:
+                lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
+            if msg.tool_name:
+                tool_input = ""
+                if msg.tool_input:
+                    tool_input = f"\n```json\n{json.dumps(msg.tool_input, indent=2, ensure_ascii=False)}\n```"
+                lines.append(f"\n**Tool: {msg.tool_name}**{tool_input}")
+    lines.append("")
+
+
 def export_to_markdown(session: Session, platform: str = "claude") -> str:
     """Export session to Markdown format with full header metadata"""
     from collections import Counter
     import re
 
     # Calculate aggregate statistics
-    user_count = sum(1 for m in session.messages if m.role == "user")
-    assistant_count = sum(1 for m in session.messages if m.role == "assistant")
-    tool_calls = sum(1 for m in session.messages if m.tool_name)
+    messages = aggregate_messages(session)
+    user_count = sum(1 for m in messages if m.role == "user")
+    assistant_count = sum(1 for m in messages if m.role == "assistant")
+    tool_calls = sum(1 for m in messages if m.tool_name)
 
     # Unified tool breakdown (combine regular tools, MCP, Skills)
     unified_tool_counts = Counter()
-    for msg in session.messages:
+    for msg in messages:
         if not msg.tool_name:
             continue
         # MCP: extract server name
@@ -750,7 +810,7 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
             unified_tool_counts[msg.tool_name] += 1
 
     # Add skill invocations from user messages
-    for msg in session.messages:
+    for msg in messages:
         if msg.role == "user" and msg.content:
             matches = re.findall(r"<command-name>/([^<]+)</command-name>", msg.content)
             for skill_name in matches:
@@ -774,10 +834,10 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
     tool_breakdown = ", ".join(breakdown_items)
 
     # Token totals
-    total_input = sum(m.input_tokens for m in session.messages)
-    total_output = sum(m.output_tokens for m in session.messages)
-    total_cache_read = sum(m.cache_read_tokens for m in session.messages)
-    total_cache_created = sum(m.cache_creation_tokens for m in session.messages)
+    total_input = sum(m.input_tokens for m in messages)
+    total_output = sum(m.output_tokens for m in messages)
+    total_cache_read = sum(m.cache_read_tokens for m in messages)
+    total_cache_created = sum(m.cache_creation_tokens for m in messages)
     total_tokens = total_input + total_output + total_cache_read + total_cache_created
 
     # Cost calculation
@@ -877,39 +937,29 @@ def export_to_markdown(session: Session, platform: str = "claude") -> str:
 
     # Messages
     for msg in session.messages:
-        if msg.role == "tool_result":
-            lines.append(f"\n### Tool Result\n")
-            if msg.content:
-                # Try to format as JSON if it's valid JSON
-                try:
-                    json_data = json.loads(msg.content)
-                    lines.append(f"```json\n{json.dumps(json_data, indent=2, ensure_ascii=False)}\n```")
-                except (json.JSONDecodeError, TypeError):
-                    lines.append(f"```\n{msg.content}\n```")
-        else:
-            local_ts = to_local_datetime(msg.timestamp)
-            time_str = f" • {local_ts.strftime('%H:%M:%S')}" if local_ts else ""
-            role_label = format_message_role(msg)
-            token_str = ""
+        append_markdown_message(lines, msg)
 
-            if msg.role == "assistant":
-                if msg.input_tokens > 0 or msg.output_tokens > 0:
-                    token_str = f" • {format_token_count(msg.input_tokens)}/{format_token_count(msg.output_tokens)} tokens"
-
-            lines.append(f"\n### {role_label}{time_str}{token_str}\n")
-
-            if msg.content:
-                lines.append(f"```\n{msg.content}\n```")
-
-            if msg.role == "assistant":
-                if msg.thinking_text:
-                    lines.append(f"\n*Thinking:*\n```\n{msg.thinking_text}\n```")
-                if msg.tool_name:
-                    tool_input = ""
-                    if msg.tool_input:
-                        tool_input = f"\n```json\n{json.dumps(msg.tool_input, indent=2, ensure_ascii=False)}\n```"
-                    lines.append(f"\n**Tool: {msg.tool_name}**{tool_input}")
+    for subagent in session.subagents:
+        lines.append(f"\n## Subagent: {subagent.agent_type or 'Subagent'}\n")
+        lines.append(f"**ID:** {subagent.id}")
+        if subagent.description:
+            lines.append(f"**Description:** {subagent.description}")
+        lines.append(f"**Messages:** {len(subagent.messages)}")
+        subagent_input = sum(m.input_tokens for m in subagent.messages)
+        subagent_output = sum(m.output_tokens for m in subagent.messages)
+        subagent_cache_read = sum(m.cache_read_tokens for m in subagent.messages)
+        subagent_cache_creation = sum(m.cache_creation_tokens for m in subagent.messages)
+        subagent_total = subagent_input + subagent_output + subagent_cache_read + subagent_cache_creation
+        if subagent_total:
+            token_parts = [f"Input: {subagent_input}", f"Output: {subagent_output}"]
+            if subagent_cache_read:
+                token_parts.append(f"Cache Read: {subagent_cache_read}")
+            if subagent_cache_creation:
+                token_parts.append(f"Cache Created: {subagent_cache_creation}")
+            lines.append(f"**Tokens:** {' • '.join(token_parts)} (Total: {subagent_total})")
         lines.append("")
+        for msg in subagent.messages:
+            append_markdown_message(lines, msg)
 
     return "\n".join(lines)
 
@@ -930,20 +980,28 @@ def format_duration_md(seconds: int) -> str:
 
 def export_to_html(session: Session) -> str:
     """Export session to HTML format"""
+    from html import escape
+
+    def esc(value) -> str:
+        return escape(str(value), quote=True)
+
     lines = [
         "<!DOCTYPE html>",
         "<html><head>",
-        f"<title>Conversation: {session.id}</title>",
+        f"<title>Conversation: {esc(session.id)}</title>",
         "<style>",
         "body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }",
         ".message { margin: 20px 0; padding: 15px; border-radius: 8px; }",
         ".user { background: #e3f2fd; }",
         ".assistant { background: #f5f5f5; }",
         ".role { font-weight: bold; margin-bottom: 10px; }",
+        ".subagent { margin: 24px 0; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }",
+        ".subagent summary { cursor: pointer; font-weight: bold; }",
+        ".subagent-meta { color: #666; font-size: 0.9em; margin: 8px 0; }",
         "pre { background: #263238; color: #eceff1; padding: 15px; border-radius: 4px; overflow-x: auto; }",
         "</style></head><body>",
-        f"<h1>Conversation: {session.id}</h1>",
-        f"<p><strong>Project:</strong> {session.project_name}</p>",
+        f"<h1>Conversation: {esc(session.id)}</h1>",
+        f"<p><strong>Project:</strong> {esc(session.project_name)}</p>",
         f"<p><strong>Created:</strong> {session.created_at.isoformat() if session.created_at else 'Unknown'}</p>",
         "<hr>"
     ]
@@ -952,12 +1010,34 @@ def export_to_html(session: Session) -> str:
         role = format_message_role(msg)
         message_class = msg.role if msg.role in ("user", "assistant") else "assistant"
         lines.append(f'<div class="message {message_class}">')
-        lines.append(f'<div class="role">{role}</div>')
+        lines.append(f'<div class="role">{esc(role)}</div>')
         if msg.content:
-            lines.append(f'<div class="content">{msg.content}</div>')
+            lines.append(f'<div class="content">{esc(msg.content)}</div>')
         if msg.thinking_text:
-            lines.append(f'<pre>{msg.thinking_text}</pre>')
+            lines.append(f'<pre>{esc(msg.thinking_text)}</pre>')
         lines.append("</div>")
+
+    for subagent in session.subagents:
+        subagent_input = sum(m.input_tokens for m in subagent.messages)
+        subagent_output = sum(m.output_tokens for m in subagent.messages)
+        lines.append('<details class="subagent">')
+        lines.append(f'<summary>Subagent: {esc(subagent.agent_type or "Subagent")} ({len(subagent.messages)} messages)</summary>')
+        lines.append(f'<div class="subagent-meta">ID: {esc(subagent.id)}</div>')
+        if subagent.description:
+            lines.append(f'<div class="subagent-meta">{esc(subagent.description)}</div>')
+        if subagent_input or subagent_output:
+            lines.append(f'<div class="subagent-meta">Tokens: {subagent_input} input / {subagent_output} output</div>')
+        for msg in subagent.messages:
+            role = format_message_role(msg)
+            message_class = msg.role if msg.role in ("user", "assistant") else "assistant"
+            lines.append(f'<div class="message {message_class}">')
+            lines.append(f'<div class="role">{esc(role)}</div>')
+            if msg.content:
+                lines.append(f'<div class="content">{esc(msg.content)}</div>')
+            if msg.thinking_text:
+                lines.append(f'<pre>{esc(msg.thinking_text)}</pre>')
+            lines.append("</div>")
+        lines.append('</details>')
 
     lines.append("</body></html>")
     return "\n".join(lines)
@@ -965,10 +1045,18 @@ def export_to_html(session: Session) -> str:
 
 def export_to_json(session: Session) -> dict:
     """Export session to JSON format"""
+    messages = aggregate_messages(session)
     return {
         "id": session.id,
         "project_name": session.project_name,
         "project_path": session.project_path,
         "created_at": session.created_at.isoformat() if session.created_at else None,
-        "messages": [message_to_dict(m) for m in session.messages]
+        "ended_at": get_ended_at(session).isoformat() if get_ended_at(session) else None,
+        "message_count": len(messages),
+        "input_tokens": sum(m.input_tokens for m in messages),
+        "output_tokens": sum(m.output_tokens for m in messages),
+        "cache_read_tokens": sum(m.cache_read_tokens for m in messages),
+        "cache_creation_tokens": sum(m.cache_creation_tokens for m in messages),
+        "messages": [message_to_dict(m) for m in session.messages],
+        "subagents": [subagent_to_dict(subagent) for subagent in session.subagents],
     }

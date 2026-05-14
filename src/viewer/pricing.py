@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from .parsers.claude import aggregate_messages
+
 
 @dataclass(frozen=True)
 class ModelPricing:
@@ -158,7 +160,7 @@ def calculate_session_cost(session) -> dict:
     priced_messages = 0
     eligible_messages = 0
 
-    for message in session.messages:
+    for message in aggregate_messages(session):
         message_input_tokens = message.input_tokens or 0
         message_output_tokens = message.output_tokens or 0
         message_cache_read_tokens = message.cache_read_tokens or 0

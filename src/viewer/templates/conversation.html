@@ -125,6 +125,8 @@ function loadConversation() {
         .then(data => {
             const session = data.session || {};
             const messages = data.messages || [];
+            const subagents = data.subagents || [];
+            const aggregateMessages = messages.concat(...subagents.map(sa => normalizeSubagentMessages(sa.messages || [])));
 
             // Update session title and date
             if (session.custom_title) {
@@ -155,12 +157,12 @@ function loadConversation() {
                 metaBadgesEl.innerHTML = metaHtml;
             }
 
-            allMessages = messages;
-            renderMessages(messages);
-            updateSessionStats(messages);
+            allMessages = aggregateMessages;
+            renderMessages(messages, subagents);
+            updateSessionStats(aggregateMessages);
             renderSessionTiming(session);
             renderToolSummary(session);
-            renderSessionHeaderMetrics(messages, session);
+            renderSessionHeaderMetrics(aggregateMessages, session);
         })
         .catch(err => {
             console.error('Failed to load conversation:', err);
@@ -169,20 +171,36 @@ function loadConversation() {
         });
 }
 
-function renderMessages(messages) {
+function renderMessages(messages, subagents = []) {
     const container = document.getElementById('messages-list');
 
-    if (messages.length === 0) {
+    if (messages.length === 0 && subagents.length === 0) {
         container.innerHTML = '<div class="text-center py-4 text-muted">No messages</div>';
         return;
     }
 
+    container.innerHTML = renderMessageBubbles(messages) + subagents.map(renderSubagentBlock).join('');
+}
+
+function subagentFilterRole(msg) {
+    return msg.message_type === 'compacted' || msg.role === 'system' ? msg.role : 'assistant';
+}
+
+function normalizeSubagentMessages(messages) {
+    return messages.map(msg => {
+        return { ...msg, filter_role: subagentFilterRole(msg) };
+    });
+}
+
+function renderMessageBubbles(messages, options = {}) {
+    const normalizedMessages = options.subagent ? normalizeSubagentMessages(messages) : messages;
     // Track last tool_name/skill to associate tool_result with its source
     let lastToolName = '';
     let lastSkillName = '';
 
-    container.innerHTML = messages.map(msg => {
-        const isUser = msg.role === 'user';
+    return normalizedMessages.map(msg => {
+        const filterRole = msg.filter_role || msg.role;
+        const isUser = filterRole === 'user';
         const isCompacted = msg.message_type === 'compacted';
         const isSystem = msg.role === 'system' && !isCompacted;
         const isToolResult = msg.role === 'tool_result' || msg.message_type === 'tool_result';
@@ -307,7 +325,7 @@ function renderMessages(messages) {
         }
 
         return `
-            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
+            <div class="message-bubble ${msgClass}" data-tool="${toolNameForFilter}" data-role="${msg.filter_role || msg.role}" data-message-type="${msg.message_type || ''}" data-mcp="${mcpNameForFilter}" data-skill="${skillNameForFilter}">
                 <div class="message-header collapsible-header" onclick="toggleMessageCollapse(this)">
                     <span class="badge ${roleBadge}">${roleIcon}${roleLabel}</span>
                     ${msg.timestamp ? `<small class="text-muted ms-2">${new Date(msg.timestamp).toLocaleTimeString()}</small>` : ''}
@@ -319,6 +337,40 @@ function renderMessages(messages) {
             </div>
         `;
     }).join('');
+}
+
+function renderSubagentBlock(subagent) {
+    const messages = subagent.messages || [];
+    const type = subagent.agent_type || 'Subagent';
+    const description = subagent.description || '';
+    const inputTokens = subagent.input_tokens || 0;
+    const outputTokens = subagent.output_tokens || 0;
+    const cacheReadTokens = subagent.cache_read_tokens || 0;
+    const cacheCreationTokens = subagent.cache_creation_tokens || 0;
+    const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens;
+    const tokenBadge = totalTokens > 0
+        ? `<span class="badge bg-success ms-1" title="Subagent tokens">${formatTokens(inputTokens)}/${formatTokens(outputTokens)}</span>`
+        : '';
+
+    return `
+        <div class="subagent-block">
+            <div class="subagent-header collapsible-header" onclick="toggleCollapse(this)">
+                <span class="badge bg-dark"><i class="bi bi-diagram-3"></i> ${escapeHtml(type)}</span>
+                <span class="subagent-id">${escapeHtml(subagent.id || '')}</span>
+                <span class="badge bg-secondary ms-1">${messages.length} messages</span>
+                ${tokenBadge}
+                <i class="bi bi-chevron-right collapse-icon ms-auto"></i>
+            </div>
+            ${description ? `<div class="subagent-description">${escapeHtml(description)}</div>` : ''}
+            <div class="subagent-meta">
+                ${subagent.model ? `<span>${escapeHtml(subagent.model)}</span>` : ''}
+                ${subagent.effort ? `<span>${escapeHtml(subagent.effort)}</span>` : ''}
+            </div>
+            <div class="subagent-body collapse-content" style="display: none">
+                ${renderMessageBubbles(messages, { subagent: true })}
+            </div>
+        </div>
+    `;
 }
 
 function stripPromptTags(text) {
@@ -820,7 +872,7 @@ function toggleMessageCollapse(header) {
 }
 
 function toggleCollapse(header) {
-    const block = header.closest('.thinking-block, .tool-use-block');
+    const block = header.closest('.thinking-block, .tool-use-block, .subagent-block');
     const content = block.querySelector('.collapse-content');
     const icon = header.querySelector('.collapse-icon');
 
@@ -975,11 +1027,11 @@ function updateSessionStats(messages) {
     messages.forEach(msg => {
         if (msg.message_type === 'compacted') {
             stats.compacted++;
-        } else if (msg.role === 'user') {
+        } else if ((msg.filter_role || msg.role) === 'user') {
             stats.user++;
-        } else if (msg.role === 'system') {
+        } else if ((msg.filter_role || msg.role) === 'system') {
             stats.system++;
-        } else if (msg.role === 'assistant') {
+        } else if ((msg.filter_role || msg.role) === 'assistant') {
             stats.assistant++;
         }
         if (msg.tool_name) {
@@ -1074,14 +1126,22 @@ function updateFilterBadges() {
 
 function applyFilters() {
     const bubbles = document.querySelectorAll('.message-bubble');
+    const subagentBlocks = document.querySelectorAll('.subagent-block');
     if (activeFilters.size === 0) {
         bubbles.forEach(b => b.style.display = '');
+        subagentBlocks.forEach(block => block.style.display = '');
         return;
     }
 
     bubbles.forEach(bubble => {
         const matches = Array.from(activeFilters).some(filter => messageMatchesFilter(bubble, filter));
         bubble.style.display = matches ? '' : 'none';
+    });
+
+    subagentBlocks.forEach(block => {
+        const hasVisibleMessage = Array.from(block.querySelectorAll('.message-bubble'))
+            .some(bubble => bubble.style.display !== 'none');
+        block.style.display = hasVisibleMessage ? '' : 'none';
     });
 }
 
@@ -1209,13 +1269,20 @@ function renderSessionHeaderMetrics(messages, session) {
     const container = document.getElementById('session-header-metrics');
     if (!container) return;
 
-    const totals = messages.reduce((acc, msg) => {
+    const fallbackTotals = messages.reduce((acc, msg) => {
         acc.input += msg.input_tokens || 0;
         acc.output += msg.output_tokens || 0;
         acc.cacheRead += msg.cache_read_tokens || 0;
         acc.cacheCreation += msg.cache_creation_tokens || 0;
         return acc;
     }, { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 });
+
+    const totals = {
+        input: session.input_tokens ?? fallbackTotals.input,
+        output: session.output_tokens ?? fallbackTotals.output,
+        cacheRead: session.cache_read_tokens ?? fallbackTotals.cacheRead,
+        cacheCreation: session.cache_creation_tokens ?? fallbackTotals.cacheCreation,
+    };
 
     const parts = [];
     const totalTokens = totals.input + totals.output + totals.cacheRead + totals.cacheCreation;

@@ -3,7 +3,7 @@
 import json
 import re
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 
@@ -41,6 +41,19 @@ class Message:
 
 
 @dataclass
+class SubagentSession:
+    """Represents a Claude Code subagent session"""
+    id: str
+    messages: list[Message]
+    agent_type: Optional[str] = None
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
+
+
+@dataclass
 class Session:
     """Represents a conversation session"""
     id: str
@@ -53,6 +66,14 @@ class Session:
     model: Optional[str] = None
     effort: Optional[str] = None
     custom_title: Optional[str] = None
+    subagents: list[SubagentSession] = field(default_factory=list)
+
+
+def aggregate_messages(session: Session) -> list[Message]:
+    messages = list(session.messages)
+    for subagent in session.subagents:
+        messages.extend(subagent.messages)
+    return messages
 
 
 class ClaudeParser:
@@ -505,6 +526,48 @@ class ClaudeParser:
                 pass
         return None
 
+    def _iter_parent_session_files(self, project_path: Path) -> list[Path]:
+        return sorted(
+            session_file
+            for session_file in project_path.glob("*.jsonl")
+            if not session_file.name.startswith("agent-")
+        )
+
+    def _parse_subagent_meta(self, meta_file: Path) -> dict:
+        if not meta_file.exists():
+            return {}
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _parse_subagents(self, project_path: Path, session_id: str) -> list[SubagentSession]:
+        subagents_path = project_path / session_id / "subagents"
+        if not subagents_path.exists():
+            return []
+
+        subagents = []
+        for session_file in sorted(subagents_path.glob("agent-*.jsonl")):
+            messages, metadata = self.parse_session(session_file)
+            if not messages:
+                continue
+
+            meta = self._parse_subagent_meta(session_file.with_suffix(".meta.json"))
+            subagents.append(SubagentSession(
+                id=session_file.stem,
+                messages=messages,
+                agent_type=meta.get("agentType"),
+                description=meta.get("description"),
+                created_at=messages[0].timestamp if messages else None,
+                ended_at=messages[-1].timestamp if messages else None,
+                model=metadata.get("model"),
+                effort=metadata.get("effort")
+            ))
+
+        return sorted(subagents, key=lambda s: (s.created_at or datetime.min, s.id))
+
     def get_projects(self) -> list[dict]:
         """Get list of all projects"""
         projects = []
@@ -516,7 +579,7 @@ class ClaudeParser:
             if not project_dir.is_dir():
                 continue
 
-            sessions = list(project_dir.glob("*.jsonl"))
+            sessions = self._iter_parent_session_files(project_dir)
             if sessions:
                 first_session_path = sessions[0]
                 messages, _ = self.parse_session(first_session_path)
@@ -538,10 +601,7 @@ class ClaudeParser:
         if not project_path.exists():
             return sessions
 
-        for session_file in project_path.glob("*.jsonl"):
-            if session_file.name.startswith("agent-"):
-                continue
-
+        for session_file in self._iter_parent_session_files(project_path):
             messages, metadata = self.parse_session(session_file)
             if messages:
                 first_user = next((m for m in messages if m.role == "user"), None)
@@ -556,7 +616,8 @@ class ClaudeParser:
                     ended_at=messages[-1].timestamp if messages else None,
                     model=metadata.get("model"),
                     effort=metadata.get("effort"),
-                    custom_title=metadata.get("custom_title")
+                    custom_title=metadata.get("custom_title"),
+                    subagents=self._parse_subagents(project_path, session_file.stem)
                 )
                 sessions.append(session)
 

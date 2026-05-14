@@ -1150,6 +1150,45 @@ pre.compact-hidden-text {
     transition: opacity 0.2s ease;
 }
 
+.subagent-block {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px;
+    background: var(--bg-secondary);
+}
+
+.subagent-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.subagent-body {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.subagent-meta {
+    display: flex;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.subagent-description {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 6px;
+}
+
+.subagent-id {
+    color: var(--text-muted);
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
 /* Stat badges - clickable filters */
 .stat-badge {
     cursor: pointer;
