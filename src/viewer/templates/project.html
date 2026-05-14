@@ -24,7 +24,7 @@
     <div class="col-12">
         <h4>
             <i class="bi bi-folder"></i> {{ project_name }}
-            <span id="platform-badge" class="badge bg-info">{{ platform }}</span>
+            <span id="platform-badge" class="badge {% if platform == 'claude' %}bg-warning text-dark{% else %}bg-info{% endif %}">{{ platform }}</span>
             <span id="project-tokens" class="badge bg-success ms-1">-</span>
             <span id="sessions-count" class="badge bg-secondary rounded-pill ms-1">- sessions</span>
         </h4>

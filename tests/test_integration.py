@@ -69,12 +69,14 @@ def test_project_page_uses_compact_links_bar_and_no_dashboard_back_link():
     assert 'id="project-links-bar"' in response.text
     assert 'class="project-page"' in response.text
     assert 'class="page-link-pill"' in response.text
+    assert 'id="platform-badge" class="badge bg-warning text-dark">claude' in response.text
     assert 'Back to Dashboard' not in response.text
 
 
 def test_conversation_page_has_no_dashboard_back_link():
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
     assert response.status_code == 200
+    assert 'id="platform-badge" class="badge bg-warning text-dark">claude' in response.text
     assert 'Back to Dashboard' not in response.text
     assert 'Диалог' in response.text
 
