@@ -41,6 +41,43 @@ def test_calculate_message_cost_for_claude_alias():
 
 
 
+def test_calculate_message_cost_for_claude_opus47_model_id():
+    msg = make_message(
+        model="claude-opus-4-7",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        cache_read_tokens=200_000,
+        cache_creation_tokens=50_000,
+    )
+
+    cost = calculate_message_cost(msg)
+
+    assert cost is not None
+    assert cost["provider"] == "claude"
+    assert cost["model"] == "Opus 4.7"
+    assert round(cost["total_usd"], 4) == 7.9125
+
+
+
+def test_calculate_message_cost_for_claude_opus47_aliases():
+    for model in ("Opus 4.7", "claude-opus-4.7"):
+        msg = make_message(
+            model=model,
+            input_tokens=1_000_000,
+            output_tokens=100_000,
+            cache_read_tokens=200_000,
+            cache_creation_tokens=50_000,
+        )
+
+        cost = calculate_message_cost(msg)
+
+        assert cost is not None
+        assert cost["provider"] == "claude"
+        assert cost["model"] == "Opus 4.7"
+        assert round(cost["total_usd"], 4) == 7.9125
+
+
+
 def test_calculate_message_cost_for_openai_model():
     msg = make_message(
         model="gpt-5.4",
@@ -55,6 +92,23 @@ def test_calculate_message_cost_for_openai_model():
     assert cost["provider"] == "openai"
     assert cost["model"] == "gpt-5.4"
     assert round(cost["total_usd"], 3) == 2.026
+
+
+
+def test_calculate_message_cost_for_gpt55_model():
+    msg = make_message(
+        model="gpt-5.5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        cache_read_tokens=200_000,
+    )
+
+    cost = calculate_message_cost(msg)
+
+    assert cost is not None
+    assert cost["provider"] == "openai"
+    assert cost["model"] == "gpt-5.5"
+    assert round(cost["total_usd"], 3) == 8.100
 
 
 

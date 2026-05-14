@@ -16,16 +16,22 @@ class ModelPricing:
 
 
 PRICING = {
+    "claude-opus-4-7": ModelPricing("claude", "Opus 4.7", 5.00, 25.00, 0.50, 6.25),
+    "claude-opus-4.7": ModelPricing("claude", "Opus 4.7", 5.00, 25.00, 0.50, 6.25),
     "claude-opus-4-6": ModelPricing("claude", "Opus 4.6", 5.00, 25.00, 0.50, 6.25),
+    "claude-opus-4.6": ModelPricing("claude", "Opus 4.6", 5.00, 25.00, 0.50, 6.25),
     "claude-opus-4-5": ModelPricing("claude", "Opus 4.5", 5.00, 25.00, 0.50, 6.25),
     "claude-sonnet-4-6": ModelPricing("claude", "Sonnet 4.6", 3.00, 15.00, 0.30, 3.75),
+    "claude-sonnet-4.6": ModelPricing("claude", "Sonnet 4.6", 3.00, 15.00, 0.30, 3.75),
     "claude-sonnet-4-5": ModelPricing("claude", "Sonnet 4.5", 3.00, 15.00, 0.30, 3.75),
     "claude-haiku-4-5": ModelPricing("claude", "Haiku 4.5", 1.00, 5.00, 0.10, 1.25),
     "sonnet 4.6": ModelPricing("claude", "Sonnet 4.6", 3.00, 15.00, 0.30, 3.75),
     "sonnet 4.5": ModelPricing("claude", "Sonnet 4.5", 3.00, 15.00, 0.30, 3.75),
+    "opus 4.7": ModelPricing("claude", "Opus 4.7", 5.00, 25.00, 0.50, 6.25),
     "opus 4.6": ModelPricing("claude", "Opus 4.6", 5.00, 25.00, 0.50, 6.25),
     "opus 4.5": ModelPricing("claude", "Opus 4.5", 5.00, 25.00, 0.50, 6.25),
     "haiku 4.5": ModelPricing("claude", "Haiku 4.5", 1.00, 5.00, 0.10, 1.25),
+    "gpt-5.5": ModelPricing("openai", "gpt-5.5", 5.00, 30.00, 0.50, 0.0),
     "gpt-5.4": ModelPricing("openai", "gpt-5.4", 1.25, 7.50, 0.13, 0.0),
     "gpt-5": ModelPricing("openai", "gpt-5", 1.25, 10.00, 0.625, 0.0),
     "gpt-5.4-mini": ModelPricing("openai", "gpt-5.4-mini", 0.375, 2.25, 0.0375, 0.0),
