@@ -2,21 +2,24 @@
 
 {% block title %}Conversation - History AI Chat{% endblock %}
 
-{% block nav_items %}
-<li class="nav-item">
-    <a class="nav-link" href="/"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
-</li>
-{% endblock %}
 
 {% block content %}
-<div class="row mb-3">
+<div class="conversation-page">
+<div class="row mb-2">
     <div class="col-12">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/">Home</a></li>
-                <li class="breadcrumb-item"><a href="/project/{{ project_id }}?platform={{ platform }}">{{ project_name }}</a></li>
-                <li class="breadcrumb-item active">Conversation</li>
-            </ol>
+        <nav id="page-links-bar" class="page-links-bar" aria-label="Conversation navigation">
+            <a class="page-link-pill" href="/">
+                <i class="bi bi-house-door"></i>
+                <span>Home</span>
+            </a>
+            <a class="page-link-pill" href="/project/{{ project_id }}?platform={{ platform }}">
+                <i class="bi bi-folder2-open"></i>
+                <span>{{ project_name }}</span>
+            </a>
+            <span class="page-link-pill is-current" aria-current="page">
+                <i class="bi bi-chat-quote"></i>
+                <span>Диалог</span>
+            </span>
         </nav>
     </div>
 </div>
@@ -1456,6 +1459,14 @@ function renderSessionHeaderMetrics(messages, session) {
         `);
     }
 
+    if (messages.length > 0) {
+        parts.push(`
+            <span class="badge bg-secondary rounded-pill">
+                <i class="bi bi-chat-dots"></i> ${messages.length} msgs
+            </span>
+        `);
+    }
+
     const cost = session.cost;
     if (cost && cost.available) {
         const tooltipParts = [];
@@ -1497,4 +1508,5 @@ function renderToolGroup(title, icon, items, cssClass) {
     `;
 }
 </script>
+</div>
 {% endblock %}

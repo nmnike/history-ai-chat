@@ -63,6 +63,22 @@ def test_project_page_defaults_to_last_7_days():
     assert 'function formatCost(cost)' in response.text
 
 
+def test_project_page_uses_compact_links_bar_and_no_dashboard_back_link():
+    response = client.get("/project/test-project")
+    assert response.status_code == 200
+    assert 'id="project-links-bar"' in response.text
+    assert 'class="project-page"' in response.text
+    assert 'class="page-link-pill"' in response.text
+    assert 'Back to Dashboard' not in response.text
+
+
+def test_conversation_page_has_no_dashboard_back_link():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'Back to Dashboard' not in response.text
+    assert 'Диалог' in response.text
+
+
 def test_project_page_renders_display_name_for_claude_project(monkeypatch):
     class StubClaudeParser:
         def get_projects(self):
@@ -584,6 +600,10 @@ def test_conversation_template_supports_compact_session_overview_toggle():
     """Conversation template should support compact/expanded top panel state"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
     assert response.status_code == 200
+    assert 'id="page-links-bar"' in response.text
+    assert 'class="conversation-page"' in response.text
+    assert 'class="page-links-bar"' in response.text
+    assert 'class="page-link-pill"' in response.text
     assert 'id="session-overview"' in response.text
     assert 'id="session-overview-toggle"' in response.text
     assert 'id="session-overview-details"' in response.text
@@ -595,6 +615,9 @@ def test_conversation_template_supports_compact_session_overview_toggle():
     assert 'if (event.target !== event.currentTarget) {' in response.text
 
     css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
+    assert '--nav-pill-accent: #3b82f6;' in css_text
+    assert '.page-links-bar {' in css_text
+    assert '.page-link-pill {' in css_text
     assert '.session-overview {' in css_text
     assert '.session-overview.compact .session-overview-details {' in css_text
 
@@ -1086,3 +1109,10 @@ def test_conversation_template_uses_session_cost_in_header_metrics():
     assert 'const cost = session.cost;' in response.text
     assert 'cost && cost.available' in response.text
     assert 'cost.total_usd.toFixed(2)' in response.text
+
+
+def test_conversation_template_shows_aggregate_message_count_before_cost():
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'messages.length > 0' in response.text
+    assert '<i class="bi bi-chat-dots"></i> ${messages.length} msgs' in response.text

@@ -2,20 +2,20 @@
 
 {% block title %}{{ project_name }} - History AI Chat{% endblock %}
 
-{% block nav_items %}
-<li class="nav-item">
-    <a class="nav-link" href="/"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
-</li>
-{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
+<div class="project-page">
+<div class="row mb-2">
     <div class="col-12">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/">Home</a></li>
-                <li class="breadcrumb-item active">{{ project_name }}</li>
-            </ol>
+        <nav id="project-links-bar" class="page-links-bar" aria-label="Project navigation">
+            <a class="page-link-pill" href="/">
+                <i class="bi bi-house-door"></i>
+                <span>Home</span>
+            </a>
+            <span class="page-link-pill is-current" aria-current="page">
+                <i class="bi bi-folder2-open"></i>
+                <span>{{ project_name }}</span>
+            </span>
         </nav>
     </div>
 </div>
@@ -58,6 +58,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 
