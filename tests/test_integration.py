@@ -580,6 +580,43 @@ def test_conversation_template_contains_metadata_and_multi_filter_ui():
     assert 'function renderToolSummary(session)' in response.text
 
 
+def test_conversation_template_supports_compact_session_overview_toggle():
+    """Conversation template should support compact/expanded top panel state"""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'id="session-overview"' in response.text
+    assert 'id="session-overview-toggle"' in response.text
+    assert 'id="session-overview-details"' in response.text
+    assert 'const SESSION_OVERVIEW_STORAGE_KEY = ' in response.text
+    assert 'function initSessionOverviewToggle()' in response.text
+    assert 'function toggleSessionOverview()' in response.text
+    assert 'function applySessionOverviewState(isCompact)' in response.text
+    assert "event.target.closest('button, a, .stat-badge, .tool-summary-badge, #favorite-btn')" in response.text
+    assert 'if (event.target !== event.currentTarget) {' in response.text
+
+    css_text = Path("src/viewer/static/css/theme.css").read_text(encoding="utf-8")
+    assert '.session-overview {' in css_text
+    assert '.session-overview.compact .session-overview-details {' in css_text
+
+
+def test_conversation_template_supports_scroll_driven_session_overview_toggle():
+    """Conversation template should auto-collapse session overview on scroll down."""
+    response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
+    assert response.status_code == 200
+    assert 'let lastSessionOverviewScrollY = window.scrollY;' in response.text
+    assert 'let sessionOverviewManualExpanded = false;' in response.text
+    assert 'function initSessionOverviewScrollBehavior()' in response.text
+    assert "if (storedState === 'false' && window.scrollY > 0) {" in response.text
+    assert 'sessionOverviewManualExpanded = true;' in response.text
+    assert "window.addEventListener('scroll', () => {" in response.text
+    assert 'const scrollingDown = currentScrollY > lastSessionOverviewScrollY;' in response.text
+    assert 'if (currentScrollY <= 0) {' in response.text
+    assert 'sessionOverviewManualExpanded = false;' in response.text
+    assert 'applySessionOverviewState(false);' in response.text
+    assert 'if (scrollingDown && !sessionOverviewManualExpanded) {' in response.text
+    assert 'applySessionOverviewState(true);' in response.text
+
+
 def test_conversation_template_uses_or_multi_filter_logic():
     """Conversation template should use OR logic for multi-filter"""
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
@@ -595,7 +632,7 @@ def test_conversation_template_prioritizes_skill_tool_result_scroll_target():
     response = client.get("/conversation/test-session?project_id=test-project&platform=claude")
     assert response.status_code == 200
     assert "let lastSkillName = '';" in response.text
-    assert "const skillNameForFilter = isToolResult && isLastSkillTool ? lastSkillName : currentSkillNameForFilter;" in response.text
+    assert "const skillNameForFilter = isToolResult && isLastSkillTool ? renderState.lastSkillName : currentSkillNameForFilter;" in response.text
     assert "bubble.dataset.role === 'tool_result'" in response.text
     assert "const scrollContainer = document.getElementById('messages-container');" in response.text
     assert "scrollContainer.scrollTo({" in response.text

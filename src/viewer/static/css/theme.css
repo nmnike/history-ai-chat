@@ -1342,6 +1342,53 @@ pre.compact-hidden-text {
     color: white;
 }
 
+ .session-overview {
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 3px var(--shadow);
+}
+
+.session-overview-toggle {
+    cursor: pointer;
+    padding: 1rem 1.25rem;
+}
+
+.session-overview-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.session-overview-summary-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.session-overview-chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    padding-top: 0.2rem;
+}
+
+.session-overview-details {
+    display: block;
+}
+
+.session-overview.compact .session-overview-toggle {
+    padding: 0.75rem 1rem;
+}
+
+.session-overview.compact .session-overview-details {
+    display: none;
+}
+
+.session-overview.compact #session-header-metrics {
+    row-gap: 0.25rem;
+}
+
 /* Highlight flash when scrolling to element */
 .highlight-flash {
     animation: highlight-pulse 1.5s ease-out;
